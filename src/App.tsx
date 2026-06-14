@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { NotificationGate } from '@/hooks/useNotifications';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import Dashboard from '@/pages/Dashboard';
@@ -30,6 +31,7 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+          <NotificationGate>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
@@ -85,6 +87,7 @@ function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </NotificationGate>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>

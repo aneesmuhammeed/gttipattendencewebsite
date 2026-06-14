@@ -435,15 +435,17 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 
 ### 9.3 Student Dashboard
 - **Today's Status**: Present (green) or Not Marked (gray)
-- **Total Classes**: Number of attendance records from summary
-- **Attendance %**: (present / total) × 100 with color indicator (green ≥ 75%, red < 75%)
+- **Total Classes**: Count of sessions held (not just records — fixed logic)
+- **Attendance %**: (present / total sessions) × 100. Uses sessions as denominator.
 - **Correction Requests**: Total count + pending count
 - **Recent Attendance**: Last 10 records with dates and status badges
 - **Calendar Toggle**: Shows/hides StudentCalendarView
 - **StudentCalendarView**: Month grid with day colors (green=present, red=absent, gray=no session, white=future). Click a date → right panel shows status badge. Click absent day → opens CorrectionRequestModal with date preset.
-- **Heatmap**: 12-month attendance bar chart
-- **Trend**: 30-day attendance bar chart
-- **Quick Actions**: Request Correction button
+- **Risk Prediction**: What-if calculator showing attendance % after N more absences
+- **Heatmap**: 12-month attendance bar chart (compares sessions vs present)
+- **Trend**: 30-day attendance bar chart (compares sessions vs present)
+- **Quick Actions**: Request Correction button, Show Calendar button
+- **Notifications**: Real-time push notifications for correction approve/reject via Postgres changes subscription. Missed attendance detection on page load.
 
 ## 10. Reports & Export
 
@@ -545,7 +547,47 @@ Same Haversine calculation repeated on backend for security (cannot be bypassed 
 - Shows name, roll number, percentage
 - Color-coded: red (< 50%), orange (50–75%)
 
-## 14. Correction Request Flow
+### 13.4 Risk Prediction (`RiskPrediction`)
+- Shows current attendance percentage in large text
+- Pre-computed predictions: "If absent for 1/2/3/5 more classes → X%"
+- Highlighted in red if prediction drops below 75% (at risk)
+- Interactive slider: choose 1–20 extra absences and see resulting %
+- Visual indicator: green TrendingUp icon if safe, red TrendingDown if at risk
+- Integrated into StudentDashboard below the stat cards
+
+## 14. Notifications System
+
+### 14.1 Architecture
+Notifications use two channels:
+1. **Browser Notification API** — push notifications to the user's desktop/mobile (requires user permission)
+2. **Supabase Realtime** — Postgres change subscription detects correction status changes in real-time
+
+### 14.2 Notification Types
+
+| Type | Trigger | Channel |
+|------|---------|---------|
+| Attendance Marked | `useMarkAttendance` mutation success | Browser Notification API |
+| Attendance Missed | `useMissedAttendanceCheck` detects expired sessions without record | Browser Notification API |
+| Correction Approved | Supabase Realtime detects UPDATE on correction_requests → status='approved' | Postgres Changes subscription |
+| Correction Rejected | Supabase Realtime detects UPDATE on correction_requests → status='rejected' | Postgres Changes subscription |
+
+### 14.3 Permission Flow
+1. `NotificationGate` component in App.tsx requests permission 5s after mount
+2. `useNotifications()` hook provides `requestPermission()`, `sendNotification()`, and typed helpers
+3. All notification calls silently fail if permission not granted
+
+### 14.4 Realtime Subscriptions
+- `useRealtimeCorrections(studentId)` subscribes to `attendance_correction_requests` UPDATES filtered by student_id
+- Opens a Supabase Realtime channel on mount, cleans up on unmount
+- Calls `notifyCorrectionApproved` / `notifyCorrectionRejected` based on new status
+
+### 14.5 Missed Attendance Detection
+- `useMissedAttendanceCheck(studentId)` runs 3s after mount
+- Finds today's expired sessions (is_active=false, end_time < now)
+- Checks if student has any attendance record for today
+- If no record found → fires `notifyAttendanceMissed` for each missed session
+
+## 15. Correction Request Flow
 
 ### 14.1 Student Requests Correction
 1. From StudentDashboard → click "Request Correction" or click absent day in calendar
@@ -568,7 +610,7 @@ Same Haversine calculation repeated on backend for security (cannot be bypassed 
 - UPSERTs attendance_records with ON CONFLICT (student_id, attendance_date) DO UPDATE
 - If request has a `session_id` (legacy), inserts with that session_id + ON CONFLICT DO NOTHING
 
-## 15. User Management
+## 16. User Management
 
 ### 15.1 Users Page (Admin Only)
 - Table showing all users: Name, Email, Role, Actions
@@ -581,7 +623,7 @@ Same Haversine calculation repeated on backend for security (cannot be bypassed 
 - Professor accounts are created by promoting students
 - Admin accounts are created via direct SQL update
 
-## 16. Frontend Structure
+## 17. Frontend Structure
 
 ```
 src/
@@ -659,7 +701,7 @@ src/
 └── public/
 ```
 
-## 17. Package Dependencies
+## 18. Package Dependencies
 
 | Package | Purpose |
 |---------|---------|
@@ -676,7 +718,7 @@ src/
 | recharts | Charts (heatmap + trend bars) |
 | date-fns | Date manipulation |
 
-## 18. Supabase Configuration
+## 19. Supabase Configuration
 
 ### 18.1 Edge Function
 - **Name**: `validate-attendance`
@@ -700,7 +742,7 @@ ON CONFLICT DO NOTHING;
 UPDATE profiles SET role = 'admin' WHERE email = 'your-email@example.com';
 ```
 
-## 19. Testing Flow
+## 20. Testing Flow
 
 ### 19.1 Complete Test Scenario
 
@@ -749,19 +791,36 @@ UPDATE profiles SET role = 'admin' WHERE email = 'admin@test.edu';
 - Click Excel → downloads .xlsx
 - Click PDF → downloads .pdf
 
+**Step 10: Test Notifications**
+- Mark attendance → browser notification says "Attendance Marked"
+- After browser grants permission, wait 5s → NotificationGate triggers permission prompt
+- Professor approves/rejects correction → student gets real-time push notification
+- If student opens app after a session ended without marking → "Attendance Missed" notification
+
+**Step 11: Test Risk Prediction**
+- Student Dashboard → see Risk Prediction card below heatmap
+- Slide the "custom prediction" slider → percentage updates in real-time
+- Predictions for 1/2/3/5 absences shown with red highlight if below 75%
+
+**Step 12: Verify Correct Absent Calculation**
+- Create 5 sessions over different days
+- Mark student present for 3 of them
+- Student dashboard should show: 60% (3/5), not 100% (3/3)
+
 ### 19.2 Notifications
 - Correction approve/reject shows success toast
 - Attendance mark shows success/failure toast
 - All mutations show toast feedback
 
-### 19.3 Error Handling
+### 20.3 Error Handling
 - Duplicate attendance → "Attendance already marked for today"
 - Expired session → "Attendance Session Expired"
 - Outside geofence → "You are Xm away (max: Ym)"
 - Wrong session code → "Session Not Found"
 - No session on date for professor calendar → "No session exists for this date. Create a session first."
+- Vercel 404 on route refresh → Fixed by `vercel.json` rewrites to `/index.html`
 
-## 20. Security Summary
+## 21. Security Summary
 
 | Security Feature | Implementation |
 |-----------------|----------------|
@@ -778,7 +837,7 @@ UPDATE profiles SET role = 'admin' WHERE email = 'admin@test.edu';
 | SECURITY DEFINER bypass | RLS helper functions avoid recursion |
 | Correction approval authority | Only professors/admins can approve via SECURITY DEFINER RPC |
 
-## 21. Database Migrations
+## 22. Database Migrations
 
 ### 001_schema.sql
 Creates everything: ENUMs, tables (profiles, attendance_sessions, attendance_records, college_settings), triggers (handle_new_user, updated_at), all indexes, initial RLS policies, is_admin()/is_professor() helper functions.
@@ -792,7 +851,35 @@ Creates additional tables: attendance_audit_logs (audit trail with auto-populati
 ### 004_correction_date.sql
 Adds `date` column (DATE, nullable) to attendance_correction_requests. Makes session_id nullable. Updates approve_correction_request() to handle date-based corrections (looks up session for that date, UPSERTs attendance_records on conflict).
 
-## 22. Commands Reference
+### 005_fix_absent_logic.sql
+Fixes `recalc_attendance_summary()` to count `attendance_sessions` (total sessions held up to today) instead of `attendance_records` as the denominator for attendance percentage. Previously, only days with records were counted, inflating percentages (e.g., 8 present / 8 records = 100%, even if 10 sessions were held).
+
+## 23. Deployment
+
+### 23.1 Vercel (Recommended)
+
+The project includes `vercel.json` for SPA routing support:
+```json
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
+```
+
+This fixes `404 NOT_FOUND` errors on Vercel caused by client-side routes. Without this, Vercel tries to find a static file matching the route and returns 404.
+
+**Deploy steps:**
+1. Push to GitHub
+2. Import repo in Vercel
+3. Framework preset: **Vite**
+4. Build command: `npm run build`
+5. Output directory: `dist`
+6. Set env variables in Vercel Dashboard:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+
+### 23.2 Commands Reference
 
 ```bash
 # Development
@@ -812,7 +899,7 @@ npm install                   # Install all packages from package.json
 
 # SQL Queries
 # Run in Supabase Dashboard → SQL Editor
-# Run migrations in order: 001 → 002 → 003 → 004
+# Run migrations in order: 001 → 002 → 003 → 004 → 005
 
 # View all current policies
 SELECT * FROM pg_policies WHERE schemaname = 'public' ORDER BY tablename, policyname;
@@ -821,20 +908,21 @@ SELECT * FROM pg_policies WHERE schemaname = 'public' ORDER BY tablename, policy
 SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
 ```
 
-## 23. File Summary
+## 24. File Summary
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| src/App.tsx | ~85 | Root component with routing (all pages + protected routes) |
+| src/App.tsx | ~95 | Root component with routing + NotificationGate |
 | src/contexts/AuthContext.tsx | ~109 | Auth state management (signIn, signUp, signOut, refreshProfile) |
 | src/lib/supabase.ts | ~14 | Supabase client initialization |
 | src/lib/utils.ts | ~95 | Utility functions (Haversine, session code, formatting) |
 | src/hooks/useSessions.ts | ~90 | Session CRUD operations |
-| src/hooks/useAttendance.ts | ~130 | Attendance marking + geofence + records queries |
+| src/hooks/useAttendance.ts | ~150 | Attendance marking + geofence + browser notification on success |
 | src/hooks/useReports.ts | ~110 | Reports + dashboard stats + defaulter + student summary |
 | src/hooks/useAuditLogs.ts | ~35 | Audit log query hooks |
 | src/hooks/useCorrectionRequests.ts | ~140 | Correction requests CRUD + approve/reject RPC |
-| src/hooks/useAnalytics.ts | ~65 | Heatmap (12-month) + trend (30-day) queries |
+| src/hooks/useAnalytics.ts | ~130 | Heatmap (12-month) + trend (30-day) — fixed to compare sessions vs present |
+| src/hooks/useNotifications.tsx | ~185 | Browser Notifications + NotificationGate + Realtime corrections + Missed check |
 | src/components/attendance/AttendanceCalendar.tsx | ~156 | Reusable month grid calendar with DayStatus, CalendarNavigator |
 | src/components/attendance/ProfessorCalendarView.tsx | ~170 | Professor calendar with per-student present/absent toggle |
 | src/components/attendance/StudentCalendarView.tsx | ~120 | Student calendar with correction request on absent click |
@@ -842,17 +930,20 @@ SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' A
 | src/components/analytics/AttendanceHeatmap.tsx | ~80 | 12-month bar chart (Recharts) |
 | src/components/analytics/AttendanceTrend.tsx | ~80 | 30-day bar chart (Recharts) |
 | src/components/analytics/DefaulterWidget.tsx | ~60 | List of students below 75% |
+| src/components/analytics/RiskPrediction.tsx | ~80 | What-if attendance calculator with slider |
 | src/components/reports/AuditLogTable.tsx | ~80 | Audit trail table with device/browser/IP/GPS columns |
 | src/components/dashboard/ProfessorDashboard.tsx | ~80 | Stats + quick actions + calendar toggle |
-| src/components/dashboard/StudentDashboard.tsx | ~130 | Stats + recent + analytics + correction + calendar toggle |
+| src/components/dashboard/StudentDashboard.tsx | ~130 | Stats + recent + analytics + risk prediction + correction + calendar toggle |
 | supabase/migrations/001_schema.sql | ~280 | Full database schema |
 | supabase/migrations/002_remove_department_semester_title.sql | ~12 | Cleanup migration |
 | supabase/migrations/003_attendance_features.sql | ~247 | Audit + summary + corrections tables |
 | supabase/migrations/004_correction_date.sql | ~50 | Date column + nullable session_id for corrections |
+| supabase/migrations/005_fix_absent_logic.sql | ~30 | Fix recalc_attendance_summary to use sessions as denominator |
 | supabase/functions/validate-attendance/index.ts | ~247 | Backend validation function |
+| vercel.json | ~5 | SPA routing rewrites for Vercel |
 
-**Total frontend components: ~35 components** across ui/, layout/, auth/, sessions/, attendance/, analytics/, reports/, dashboard/ directories.
+**Total frontend components: ~38 components** across ui/, layout/, auth/, sessions/, attendance/, analytics/, reports/, dashboard/ directories.
 
-**Total hooks: 7** (useAuth, useSessions, useAttendance, useReports, useAuditLogs, useCorrectionRequests, useAnalytics)
+**Total hooks: 8** (useAuth, useSessions, useAttendance, useReports, useAuditLogs, useCorrectionRequests, useAnalytics, useNotifications)
 
 **Total pages: 9** (Login, Register, Dashboard, Sessions, Attendance, Reports, Settings, Users, NotFound)

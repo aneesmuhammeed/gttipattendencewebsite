@@ -142,6 +142,11 @@ export function useMarkAttendance() {
       toast.success('Attendance marked successfully!');
       queryClient.invalidateQueries({ queryKey: ['my-attendance'] });
       queryClient.invalidateQueries({ queryKey: ['today-attendance'] });
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Attendance Marked ✓', {
+          body: 'Your attendance has been marked successfully.',
+        });
+      }
     },
   });
 }

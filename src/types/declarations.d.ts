@@ -30,6 +30,7 @@ declare module 'lucide-react' {
   export const Save: FC<SVGProps<SVGSVGElement>>;
   export const Settings: FC<SVGProps<SVGSVGElement>>;
   export const TrendingUp: FC<SVGProps<SVGSVGElement>>;
+  export const TrendingDown: FC<SVGProps<SVGSVGElement>>;
   export const UserCheck: FC<SVGProps<SVGSVGElement>>;
   export const UserX: FC<SVGProps<SVGSVGElement>>;
   export const Users: FC<SVGProps<SVGSVGElement>>;

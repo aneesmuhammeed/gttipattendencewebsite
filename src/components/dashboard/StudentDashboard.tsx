@@ -11,6 +11,8 @@ import { CheckCircle, Clock, Calendar, AlertCircle, Plus } from 'lucide-react';
 import { CorrectionRequestModal } from '@/components/attendance/CorrectionRequestModal';
 import { AttendanceHeatmap } from '@/components/analytics/AttendanceHeatmap';
 import { AttendanceTrend } from '@/components/analytics/AttendanceTrend';
+import { RiskPrediction } from '@/components/analytics/RiskPrediction';
+import { useRealtimeCorrections, useMissedAttendanceCheck } from '@/hooks/useNotifications';
 import { StudentCalendarView } from '@/components/attendance/StudentCalendarView';
 
 export function StudentDashboard() {
@@ -21,6 +23,8 @@ export function StudentDashboard() {
   const { data: summary, isLoading: summaryLoading } = useStudentSummary(profile?.id);
   const { data: history, isLoading: historyLoading } = useMyAttendance(profile?.id);
   const { data: myRequests } = useMyCorrectionRequests(profile?.id);
+  useRealtimeCorrections(profile?.id);
+  useMissedAttendanceCheck(profile?.id);
 
   if (todayLoading || summaryLoading) return <PageSpinner />;
 
@@ -83,8 +87,9 @@ export function StudentDashboard() {
 
       {showCalendar && <StudentCalendarView />}
 
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
         <AttendanceHeatmap />
+        <RiskPrediction totalClasses={summary?.total_classes ?? 0} present={summary?.present ?? 0} />
         <div>
           <Card>
             <CardContent>

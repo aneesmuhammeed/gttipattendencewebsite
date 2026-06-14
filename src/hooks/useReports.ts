@@ -94,17 +94,24 @@ export function useStudents() {
 
 export function useStudentSummary(studentId?: string) {
   return useQuery({
-    queryKey: ['student-summary', studentId],
+    queryKey: ['student-summary2', studentId],
     queryFn: async () => {
-      const { data: records } = await supabase
-        .from('attendance_records')
-        .select('id, status')
-        .eq('student_id', studentId!);
+      const today = new Date().toISOString().split('T')[0];
 
-      if (!records) return { total_classes: 0, present: 0, absent: 0, percentage: 0 };
+      const [{ count: totalClasses }, { count: presentCount }] = await Promise.all([
+        supabase
+          .from('attendance_sessions')
+          .select('*', { count: 'exact', head: true })
+          .lte('attendance_date', today),
+        supabase
+          .from('attendance_records')
+          .select('*', { count: 'exact', head: true })
+          .eq('student_id', studentId!)
+          .eq('status', 'present'),
+      ]);
 
-      const total = records.length;
-      const present = records.filter((r) => r.status === 'present').length;
+      const total = totalClasses ?? 0;
+      const present = presentCount ?? 0;
       const absent = total - present;
       const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
 
