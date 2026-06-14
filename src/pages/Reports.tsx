@@ -1,137 +1,221 @@
 import { useState } from 'react';
 import { useReportData, useStudents } from '@/hooks/useReports';
-import { usePendingCorrections, useApproveCorrection, useRejectCorrection } from '@/hooks/useCorrectionRequests';
-import { ReportFilters } from '@/components/reports/ReportFilters';
-import { AttendanceTable } from '@/components/reports/AttendanceTable';
-import { AuditLogTable } from '@/components/reports/AuditLogTable';
-import { ExportButtons } from '@/components/reports/ExportButtons';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Input, SearchInput } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
-import { PageSpinner } from '@/components/ui/Spinner';
-import { Card, CardContent } from '@/components/ui/Card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { generateReportDateRange } from '@/lib/utils';
-import { formatDate, formatTime } from '@/lib/utils';
-import type { ReportFilters as RF } from '@/types';
-import { CheckCircle, XCircle, ClipboardList, Clock } from 'lucide-react';
-
-type Tab = 'reports' | 'audit' | 'corrections';
+import {
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Search,
+  ChevronDown,
+  ArrowUpDown,
+  Calendar,
+  Filter,
+} from 'lucide-react';
+import { exportToExcel, exportToCSV, exportToPDF } from '@/components/reports/ExportButtons';
 
 export default function Reports() {
-  const [tab, setTab] = useState<Tab>('reports');
-  const [filters, setFilters] = useState<RF>({});
-  const { data: students } = useStudents();
-  const { data, isLoading } = useReportData(filters);
-  const { data: pendingRequests, isLoading: requestsLoading } = usePendingCorrections();
-  const approveMutation = useApproveCorrection();
-  const rejectMutation = useRejectCorrection();
+  const [dateRange, setDateRange] = useState<'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom'>('monthly');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const [studentFilter, setStudentFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortField, setSortField] = useState<string>('attendance_date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  const handlePreset = (range: 'daily' | 'weekly' | 'monthly' | 'yearly') => {
-    setFilters(generateReportDateRange(range));
+  const dateParams = dateRange === 'custom'
+    ? { start_date: customStart, end_date: customEnd }
+    : generateReportDateRange(dateRange);
+
+  const { data: records, isLoading } = useReportData({
+    start_date: dateParams.start_date,
+    end_date: dateParams.end_date,
+    student_id: studentFilter || undefined,
+  });
+
+  const { data: students } = useStudents();
+
+  const filtered = (records || [])
+    .filter((r: any) =>
+      !searchQuery ||
+      r.profiles?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.profiles?.roll_number?.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a: any, b: any) => {
+      const aVal = a[sortField] || '';
+      const bVal = b[sortField] || '';
+      return sortDir === 'asc'
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
+    });
+
+  const toggleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('desc');
+    }
   };
 
-  const tableData = (data || []).map((r: any) => ({
-    Date: r.attendance_date,
-    Student: r.profiles?.full_name ?? '-',
-    'Roll No': r.profiles?.roll_number ?? '-',
-    Status: r.status,
-    Time: new Date(r.marked_at).toLocaleTimeString(),
-  }));
+  const rangeOptions = [
+    { value: 'daily', label: 'Daily' },
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'monthly', label: 'Monthly' },
+    { value: 'yearly', label: 'Yearly' },
+    { value: 'custom', label: 'Custom Range' },
+  ];
+
+  const SortIcon = ({ field }: { field: string }) => (
+    <ArrowUpDown className="w-3 h-3 text-[#9CA3AF] ml-1" />
+  );
 
   return (
-    <div className="space-y-6">
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-        <button
-          onClick={() => setTab('reports')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${tab === 'reports' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
-        >
-          <ClipboardList className="w-4 h-4 inline mr-1" /> Reports
-        </button>
-        <button
-          onClick={() => setTab('audit')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${tab === 'audit' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
-        >
-          <Clock className="w-4 h-4 inline mr-1" /> Audit Trail
-        </button>
-        <button
-          onClick={() => setTab('corrections')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${tab === 'corrections' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
-        >
-          <CheckCircle className="w-4 h-4 inline mr-1" /> Corrections
-          {pendingRequests && pendingRequests.length > 0 && (
-            <Badge variant="warning" className="ml-1">{pendingRequests.length}</Badge>
-          )}
-        </button>
+    <div className="page-container">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="page-title">Reports</h1>
+          <p className="page-subtitle">Analyze attendance data and generate reports</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => exportToPDF(filtered, dateParams)}>
+            <FileText className="w-4 h-4" /> PDF
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => exportToExcel(filtered, dateParams)}>
+            <FileSpreadsheet className="w-4 h-4" /> Excel
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => exportToCSV(filtered, dateParams)}>
+            <Download className="w-4 h-4" /> CSV
+          </Button>
+        </div>
       </div>
 
-      {tab === 'reports' && (
-        <>
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <ReportFilters
-              filters={filters}
-              onChange={setFilters}
-              onPreset={handlePreset}
-              students={students}
-            />
-            <ExportButtons data={tableData} />
-          </div>
-          {isLoading ? <PageSpinner /> : <AttendanceTable data={tableData} />}
-        </>
-      )}
-
-      {tab === 'audit' && <AuditLogTable />}
-
-      {tab === 'corrections' && (
-        <Card>
-          <CardContent>
-            <h3 className="font-semibold text-gray-900 mb-4">Pending Correction Requests</h3>
-            {requestsLoading ? (
-              <PageSpinner />
-            ) : !pendingRequests?.length ? (
-              <p className="text-sm text-gray-500 text-center py-4">No pending correction requests.</p>
-            ) : (
-              <div className="space-y-3">
-                {pendingRequests.map((req: any) => (
-                  <div key={req.id} className="border rounded-lg p-4 space-y-2">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-medium text-gray-900">{req.profiles?.full_name} ({req.profiles?.roll_number})</p>
-                        <p className="text-sm text-gray-500">
-                          Session: {req.attendance_sessions?.session_code} —{' '}
-                          {req.attendance_sessions?.attendance_date && formatDate(req.attendance_sessions.attendance_date)}{' '}
-                          {req.attendance_sessions?.start_time && formatTime(req.attendance_sessions.start_time)} -{' '}
-                          {req.attendance_sessions?.end_time && formatTime(req.attendance_sessions.end_time)}
-                        </p>
-                      </div>
-                      <Badge variant="warning">Pending</Badge>
-                    </div>
-                    <p className="text-sm text-gray-600 bg-gray-50 rounded p-2">
-                      Reason: {req.reason}
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={() => approveMutation.mutate(req.id)}
-                        isLoading={approveMutation.isPending}
-                      >
-                        <CheckCircle className="w-4 h-4 mr-1" /> Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={() => rejectMutation.mutate(req.id)}
-                        isLoading={rejectMutation.isPending}
-                      >
-                        <XCircle className="w-4 h-4 mr-1" /> Reject
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+      <Card className="mb-6">
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              {rangeOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setDateRange(opt.value as any)}
+                  className={`tab-btn ${dateRange === opt.value ? 'active' : ''}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {dateRange === 'custom' && (
+              <div className="flex items-center gap-2">
+                <Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="w-36" />
+                <span className="text-[#9CA3AF]">to</span>
+                <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="w-36" />
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1">
+              <SearchInput
+                placeholder="Search by name or roll number..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <Select
+              options={(students || []).map((s: any) => ({ value: s.id, label: `${s.full_name} (${s.roll_number || 'N/A'})` }))}
+              placeholder="All Students"
+              value={studentFilter}
+              onChange={(e) => setStudentFilter(e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card hover={false}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>
+              Attendance Records
+              {filtered.length > 0 && (
+                <span className="text-sm font-normal text-[#6B7280] ml-2">({filtered.length} records)</span>
+              )}
+            </CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="skeleton h-10 w-full" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-12">
+              <Calendar className="w-12 h-12 text-[#D1D5DB] mx-auto mb-3" />
+              <p className="text-sm text-[#6B7280]">No records found for the selected period</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider cursor-pointer hover:text-[#111827]" onClick={() => toggleSort('profiles.full_name')}>
+                      Student <SortIcon field="profiles.full_name" />
+                    </th>
+                    <th className="text-left py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider cursor-pointer hover:text-[#111827]" onClick={() => toggleSort('attendance_date')}>
+                      Date <SortIcon field="attendance_date" />
+                    </th>
+                    <th className="text-left py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider cursor-pointer hover:text-[#111827]" onClick={() => toggleSort('status')}>
+                      Status <SortIcon field="status" />
+                    </th>
+                    <th className="text-left py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider">
+                      Session
+                    </th>
+                    <th className="text-right py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider cursor-pointer hover:text-[#111827]" onClick={() => toggleSort('marked_at')}>
+                      Time <SortIcon field="marked_at" />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((record: any) => (
+                    <tr key={record.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="py-3 px-3">
+                        <div>
+                          <p className="font-medium text-[#111827]">{record.profiles?.full_name || 'Unknown'}</p>
+                          <p className="text-xs text-[#9CA3AF]">{record.profiles?.roll_number || ''}</p>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-[#111827]">
+                        {new Date(record.attendance_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </td>
+                      <td className="py-3 px-3">
+                        <Badge variant={record.status === 'present' ? 'success' : 'danger'}>
+                          {record.status}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-3 text-[#6B7280] font-mono text-xs">
+                        {record.attendance_sessions?.session_code || '-'}
+                      </td>
+                      <td className="py-3 px-3 text-right text-[#6B7280] text-xs">
+                        {record.marked_at ? new Date(record.marked_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

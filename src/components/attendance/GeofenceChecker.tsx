@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { MapPin, AlertTriangle, CheckCircle } from 'lucide-react';
+import { MapPin, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import { checkGeofence } from '@/hooks/useAttendance';
 import type { GeofenceResult } from '@/types';
 import { Button } from '@/components/ui/Button';
-import { cn } from '@/lib/utils';
 
 interface GeofenceCheckerProps {
   onResult: (result: GeofenceResult) => void;
@@ -36,9 +35,9 @@ export function GeofenceChecker({ onResult, onError }: GeofenceCheckerProps) {
 
   if (checking) {
     return (
-      <div className="flex items-center gap-2 text-gray-500 p-3 bg-gray-50 rounded-lg">
+      <div className="flex items-center gap-2 p-3 rounded-btn bg-blue-50 text-primary">
         <MapPin className="w-5 h-5 animate-pulse" />
-        <span>Checking your location...</span>
+        <span className="text-sm">Checking your location...</span>
       </div>
     );
   }
@@ -46,25 +45,35 @@ export function GeofenceChecker({ onResult, onError }: GeofenceCheckerProps) {
   if (error) {
     return (
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-red-600 p-3 bg-red-50 rounded-lg">
-          <AlertTriangle className="w-5 h-5" />
-          <span className="text-sm">{error}</span>
+        <div className="flex items-start gap-2 p-3 rounded-btn bg-red-50 text-sm">
+          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-danger" />
+          <div>
+            <p className="font-medium text-danger">Location Error</p>
+            <p className="text-xs mt-0.5 text-red-600">{error}</p>
+          </div>
         </div>
-        <Button size="sm" variant="outline" onClick={runCheck}>Retry Location Check</Button>
+        <Button size="sm" variant="outline" onClick={runCheck}>
+          <RefreshCw className="w-4 h-4" /> Retry
+        </Button>
       </div>
     );
   }
 
+  if (!result) return null;
+
   return (
-    <div className={cn(
-      'flex items-center gap-2 p-3 rounded-lg',
-      result?.withinGeofence ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-    )}>
-      {result?.withinGeofence ? <CheckCircle className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
-      <div className="text-sm">
-        {result?.withinGeofence
-          ? `You are within campus (${result.distance}m from center)`
-          : `You are ${result?.distance}m away from campus (max: ${result?.maxDistance}m)`}
+    <div
+      className="flex items-center gap-2 p-3 rounded-btn text-sm"
+      style={{
+        background: result.withinGeofence ? '#F0FDF4' : '#FEF2F2',
+        color: result.withinGeofence ? '#22C55E' : '#EF4444',
+      }}
+    >
+      {result.withinGeofence ? <CheckCircle className="w-5 h-5 shrink-0" /> : <AlertTriangle className="w-5 h-5 shrink-0" />}
+      <div>
+        {result.withinGeofence
+          ? `Within campus (${result.distance}m from center)`
+          : `${result.distance}m away (max: ${result.maxDistance}m)`}
       </div>
     </div>
   );

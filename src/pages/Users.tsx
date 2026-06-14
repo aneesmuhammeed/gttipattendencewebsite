@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { PageSpinner } from '@/components/ui/Spinner';
-import { CheckCircle, UserCheck } from 'lucide-react';
+import { SearchInput } from '@/components/ui/Input';
+import { CheckCircle, UserCheck, Users as UsersIcon, Search, Shield } from 'lucide-react';
+import { useState } from 'react';
 import toast from 'react-hot-toast';
 import type { Profile } from '@/types';
 
@@ -26,6 +28,7 @@ function useAllUsers() {
 export default function Users() {
   const queryClient = useQueryClient();
   const { data: users, isLoading } = useAllUsers();
+  const [search, setSearch] = useState('');
 
   const promoteToProfessor = useMutation({
     mutationFn: async (userId: string) => {
@@ -44,40 +47,75 @@ export default function Users() {
 
   if (isLoading) return <PageSpinner />;
 
+  const filtered = (users || []).filter(
+    (u) =>
+      !search ||
+      u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+      u.email?.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
-    <div className="space-y-6">
-      <Card>
+    <div className="page-container">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="page-title">Users</h1>
+          <p className="page-subtitle">Manage all system users and roles</p>
+        </div>
+        <SearchInput
+          placeholder="Search users..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-60"
+        />
+      </div>
+
+      <Card hover={false}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-primary-600" />
-            Manage Users
+            <UsersIcon className="w-5 h-5 text-primary" />
+            All Users
+            {users && <span className="text-sm font-normal text-[#6B7280]">({filtered.length} users)</span>}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {!users?.length ? (
-            <p className="text-gray-500 text-center py-4">No users found.</p>
+          {!filtered.length ? (
+            <div className="text-center py-12 text-sm text-[#9CA3AF]">No users found</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Email</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Role</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Actions</th>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Name</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Email</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Role</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{user.full_name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-500">{user.email}</td>
+                <tbody className="divide-y divide-gray-50">
+                  {filtered.map((user) => (
+                    <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3">
-                        <Badge variant={user.role === 'admin' ? 'info' : user.role === 'professor' ? 'warning' : 'default'}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-btn bg-primary-50 flex items-center justify-center text-primary font-semibold text-sm">
+                            {user.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                          </div>
+                          <div>
+                            <p className="font-medium text-[#111827]">{user.full_name}</p>
+                            {user.roll_number && (
+                              <p className="text-xs text-[#9CA3AF]">{user.roll_number}</p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-[#6B7280]">{user.email}</td>
+                      <td className="px-4 py-3">
+                        <Badge
+                          variant={user.role === 'admin' ? 'info' : user.role === 'professor' ? 'info' : 'default'}
+                        >
                           {user.role}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 text-right">
                         {user.role === 'student' && (
                           <Button
                             size="sm"
@@ -85,16 +123,16 @@ export default function Users() {
                             onClick={() => promoteToProfessor.mutate(user.id)}
                             isLoading={promoteToProfessor.isPending}
                           >
-                            <UserCheck className="w-4 h-4 mr-1" /> Promote to Professor
+                            <UserCheck className="w-4 h-4" /> Promote
                           </Button>
                         )}
                         {user.role === 'admin' && (
-                          <span className="text-xs text-gray-400 flex items-center gap-1">
-                            <CheckCircle className="w-3 h-3" /> System Admin
+                          <span className="inline-flex items-center gap-1 text-xs text-[#9CA3AF]">
+                            <Shield className="w-3 h-3 text-primary" /> System Admin
                           </span>
                         )}
                         {user.role === 'professor' && (
-                          <span className="text-xs text-gray-400">Already Professor</span>
+                          <span className="text-xs text-[#9CA3AF]">—</span>
                         )}
                       </td>
                     </tr>

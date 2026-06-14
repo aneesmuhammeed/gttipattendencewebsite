@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
-import { MapPin, Save } from 'lucide-react';
+import { MapPin, Save, Shield } from 'lucide-react';
 import type { CollegeSettings } from '@/types';
 import toast from 'react-hot-toast';
 
@@ -20,7 +20,7 @@ export default function Settings() {
           .from('college_settings')
           .select('*')
           .limit(1)
-          .single();
+          .maybeSingle();
         if (data) setSettings(data as CollegeSettings);
       } catch {
         // ignore
@@ -54,13 +54,21 @@ export default function Settings() {
   if (loading) return <PageSpinner />;
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="page-container max-w-2xl">
+      <div className="mb-6">
+        <h1 className="page-title">Settings</h1>
+        <p className="page-subtitle">Manage college geofence configuration</p>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MapPin className="w-5 h-5 text-primary-600" />
-            Geofence Settings
-          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-primary" />
+            <div>
+              <CardTitle>Geofence Settings</CardTitle>
+              <CardDescription>Configure the campus location and attendance radius</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <Input
@@ -90,8 +98,12 @@ export default function Settings() {
             value={settings?.geofence_radius_meters ?? ''}
             onChange={(e) => setSettings((prev) => prev ? { ...prev, geofence_radius_meters: parseInt(e.target.value) } : null)}
           />
+          <div className="flex items-center gap-2 p-3 rounded-btn bg-primary-50 text-sm text-primary">
+            <MapPin className="w-4 h-4" />
+            Students must be within {settings?.geofence_radius_meters ?? 0}m of the campus center to mark attendance
+          </div>
           <Button onClick={handleSave} isLoading={saving}>
-            <Save className="w-4 h-4 mr-2" /> Save Settings
+            <Save className="w-4 h-4" /> Save Settings
           </Button>
         </CardContent>
       </Card>

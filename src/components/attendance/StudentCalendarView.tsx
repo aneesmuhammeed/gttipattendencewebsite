@@ -1,131 +1,99 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { AttendanceCalendar, CalendarNavigator, type DayStatus } from './AttendanceCalendar';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import { useMyAttendance } from '@/hooks/useAttendance';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CheckCircle, XCircle } from 'lucide-react';
 import { CorrectionRequestModal } from './CorrectionRequestModal';
-import { Calendar, AlertCircle, CheckCircle } from 'lucide-react';
 
 export function StudentCalendarView() {
   const { profile } = useAuth();
-  const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
+  const { data: records } = useMyAttendance(profile?.id);
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showCorrection, setShowCorrection] = useState(false);
 
-  const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
 
-  const { data: records } = useQuery({
-    queryKey: ['student-calendar', profile?.id, monthStr],
-    queryFn: async () => {
-      if (!profile?.id) return [];
-      const startDate = `${monthStr}-01`;
-      const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${new Date(year, month + 1, 0).getDate()}`;
-      const { data, error } = await supabase
-        .from('attendance_records')
-        .select('attendance_date, status')
-        .eq('student_id', profile.id)
-        .gte('attendance_date', startDate)
-        .lte('attendance_date', endDate);
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!profile?.id,
+  const recordMap = new Map<string, boolean>();
+  records?.forEach((r) => {
+    if (r.status === 'present') recordMap.set(r.attendance_date, true);
   });
 
-  const { data: sessions } = useQuery({
-    queryKey: ['session-dates', monthStr],
-    queryFn: async () => {
-      const startDate = `${monthStr}-01`;
-      const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${new Date(year, month + 1, 0).getDate()}`;
-      const { data, error } = await supabase
-        .from('attendance_sessions')
-        .select('attendance_date')
-        .gte('attendance_date', startDate)
-        .lte('attendance_date', endDate);
-      if (error) throw error;
-      return new Set((data || []).map((s) => s.attendance_date));
-    },
-    enabled: true,
-  });
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
 
-  const attendanceByDate: Record<string, string> = {};
-  for (const r of records || []) {
-    attendanceByDate[r.attendance_date] = r.status;
-  }
-
-  const getDayStatus = (dateStr: string): DayStatus => {
-    const todayStr = today.toISOString().split('T')[0];
-    if (dateStr > todayStr) return 'future';
-    const status = attendanceByDate[dateStr];
-    if (status === 'present') return 'present';
-    if (status === 'absent') return 'absent';
-    if (sessions?.has(dateStr)) return 'absent';
-    return 'no-session';
+  const getDayColor = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    if (recordMap.has(dateStr)) return recordMap.get(dateStr) ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger';
+    if (day === new Date().getDate() && month === new Date().getMonth() && year === new Date().getFullYear()) return 'bg-primary-50 text-primary';
+    return 'hover:bg-gray-50 text-[#111827]';
   };
 
   return (
-    <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-      <Card>
-        <CardContent>
-          <CalendarNavigator year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); setSelectedDate(null); }} />
-          <AttendanceCalendar
-            year={year}
-            month={month}
-            getDayStatus={getDayStatus}
-            onDayClick={(date, status) => {
-              setSelectedDate(date);
-              if (status === 'absent') setShowCorrection(true);
-            }}
-          />
-          <div className="flex gap-4 mt-3 text-xs text-gray-500">
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block" /> Present</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500 inline-block" /> Absent</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-100 inline-block" /> No Session</span>
+    <>
+      <Card hover={false}>
+        <CardContent className="p-3">
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={prevMonth} className="p-1 rounded-btn hover:bg-gray-100 text-[#6B7280]">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm font-semibold text-[#111827]">
+              {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </span>
+            <button onClick={nextMonth} className="p-1 rounded-btn hover:bg-gray-100 text-[#6B7280]">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-0.5 text-center mb-1">
+            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+              <div key={d} className="text-[10px] font-semibold text-[#9CA3AF] py-1">{d}</div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-0.5">
+            {Array.from({ length: firstDay }).map((_, i) => (
+              <div key={`empty-${i}`} />
+            ))}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              const isPresent = recordMap.has(dateStr) && recordMap.get(dateStr);
+              return (
+                <button
+                  key={day}
+                  onClick={() => {
+                    setSelectedDate(dateStr);
+                    if (!isPresent) setShowCorrection(true);
+                  }}
+                  className={`aspect-square rounded-btn text-xs font-medium transition-colors ${getDayColor(day)}`}
+                  title={isPresent ? 'Present' : 'No record'}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-center gap-4 mt-3 text-xs text-[#6B7280]">
+            <span className="flex items-center gap-1"><CheckCircle className="w-3 h-3 text-success" /> Present</span>
+            <span className="flex items-center gap-1"><XCircle className="w-3 h-3 text-danger" /> Absent</span>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent>
-          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-primary-600" />
-            {selectedDate ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'Select a date'}
-          </h3>
-          {!selectedDate ? (
-            <p className="text-sm text-gray-500 text-center py-8">Click a date on the calendar to see details.</p>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Status:</span>
-                <Badge variant={getDayStatus(selectedDate) === 'present' ? 'success' : getDayStatus(selectedDate) === 'absent' ? 'danger' : 'default'}>
-                  {getDayStatus(selectedDate) === 'present' ? 'Present' : getDayStatus(selectedDate) === 'absent' ? 'Absent' : 'No Session'}
-                </Badge>
-              </div>
-              {getDayStatus(selectedDate) === 'absent' && (
-                <Button className="w-full" onClick={() => setShowCorrection(true)}>
-                  <AlertCircle className="w-4 h-4 mr-2" /> Request Correction / Leave
-                </Button>
-              )}
-              {getDayStatus(selectedDate) === 'present' && (
-                <div className="flex items-center gap-2 text-green-600 text-sm">
-                  <CheckCircle className="w-4 h-4" /> Marked present
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <CorrectionRequestModal
-        isOpen={showCorrection}
-        onClose={() => setShowCorrection(false)}
-        preselectedDate={selectedDate}
-      />
-    </div>
+      {showCorrection && selectedDate && (
+        <CorrectionRequestModal
+          isOpen={showCorrection}
+          onClose={() => setShowCorrection(false)}
+          preselectedDate={selectedDate}
+        />
+      )}
+    </>
   );
 }

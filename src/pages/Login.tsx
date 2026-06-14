@@ -1,7 +1,7 @@
 import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { LoginForm } from '@/components/auth/LoginForm';
-import { GraduationCap } from 'lucide-react';
+import { GraduationCap, Fingerprint } from 'lucide-react';
 
 export default function Login() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -9,23 +9,21 @@ export default function Login() {
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-canvas flex items-center justify-center px-4">
+      <div className="w-full max-w-md animate-fade-in-up">
         <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <div className="p-3 bg-primary-100 rounded-2xl">
-              <GraduationCap className="w-10 h-10 text-primary-600" />
-            </div>
+          <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary/20">
+            <Fingerprint className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Attendance System</h1>
-          <p className="text-gray-500 mt-1">Sign in to your account</p>
+          <h1 className="text-2xl font-bold text-[#111827]">Attendify</h1>
+          <p className="text-sm text-[#6B7280] mt-1">Sign in to your account</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-card shadow-card p-6">
           <LoginForm />
         </div>
-        <p className="text-center text-sm text-gray-500 mt-4">
+        <p className="text-center text-sm mt-5 text-[#6B7280]">
           Don't have an account?{' '}
-          <Link to="/register" className="text-primary-600 font-medium hover:text-primary-700">
+          <Link to="/register" className="font-semibold text-primary hover:text-primary-600">
             Register
           </Link>
         </p>

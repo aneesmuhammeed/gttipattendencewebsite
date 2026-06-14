@@ -27,9 +27,9 @@ export function useSessionByCode(code: string | null) {
         .from('attendance_sessions')
         .select('*')
         .eq('session_code', code)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as AttendanceSession;
+      return data as AttendanceSession | null;
     },
     enabled: !!code,
   });
@@ -75,14 +75,36 @@ export function useToggleSession() {
 
   return useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase
-        .from('attendance_sessions')
-        .update({ is_active })
-        .eq('id', id);
-      if (error) throw error;
+      if (is_active) {
+        // Activating: simple update
+        const { error } = await supabase
+          .from('attendance_sessions')
+          .update({ is_active: true })
+          .eq('id', id);
+        if (error) throw error;
+      } else {
+        // Deactivating: call RPC to mark absent for all unmarked students
+        const { error } = await supabase.rpc('expire_session_and_mark_absent', {
+          p_session_id: id,
+        });
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['attendance-records'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['attendance-summary'] });
+    },
+  });
+}
+
+export function useAutoExpireSessions() {
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.rpc('expire_all_past_sessions');
+      if (error) throw error;
+      return data as number;
     },
   });
 }

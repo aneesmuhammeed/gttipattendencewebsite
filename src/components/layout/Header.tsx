@@ -1,18 +1,20 @@
-import { Menu } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { NotificationBell } from '@/components/ui/NotificationBell';
+import { GraduationCap } from 'lucide-react';
 
-interface HeaderProps {
-  onMenuClick: () => void;
-  title: string;
-}
+export function Header() {
+  const { profile } = useAuth();
 
-export function Header({ onMenuClick, title }: HeaderProps) {
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 lg:px-6">
+    <header className="hidden lg:flex h-16 bg-white border-b border-gray-100 shadow-header items-center justify-between px-6 sticky top-0 z-20">
       <div className="flex items-center gap-3">
-        <button onClick={onMenuClick} className="p-1.5 rounded-lg hover:bg-gray-100 lg:hidden">
-          <Menu className="w-5 h-5 text-gray-600" />
-        </button>
-        <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
+        <div className="w-2 h-2 rounded-full bg-success" />
+        <span className="text-sm text-[#6B7280]">
+          Welcome back, <span className="font-semibold text-[#111827]">{profile?.full_name || 'User'}</span>
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <NotificationBell />
       </div>
     </header>
   );

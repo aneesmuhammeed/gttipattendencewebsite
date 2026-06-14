@@ -1,36 +1,53 @@
 import { useSessions, useToggleSession } from '@/hooks/useSessions';
-import { SessionCard } from './SessionCard';
-import { PageSpinner } from '@/components/ui/Spinner';
-import { AlertCircle } from 'lucide-react';
+import { SessionCard } from '@/components/sessions/SessionCard';
+import { Card, CardContent } from '@/components/ui/Card';
+import { CalendarCheck, Plus } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 
-export function SessionList() {
-  const { data: sessions, isLoading, error } = useSessions();
+interface SessionListProps {
+  onShowCreate: () => void;
+}
+
+export function SessionList({ onShowCreate }: SessionListProps) {
+  const { data: sessions, isLoading } = useSessions();
   const toggleSession = useToggleSession();
 
-  if (isLoading) return <PageSpinner />;
-  if (error) return (
-    <div className="flex items-center gap-2 text-red-600 p-4">
-      <AlertCircle className="w-5 h-5" />
-      <span>Failed to load sessions</span>
-    </div>
-  );
-
-  if (!sessions?.length) {
+  if (isLoading) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        <p className="text-lg font-medium">No sessions yet</p>
-        <p className="text-sm mt-1">Create your first attendance session to get started.</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="bg-white rounded-card p-5 shadow-card space-y-3">
+            <div className="skeleton h-4 w-2/3" />
+            <div className="skeleton h-3 w-1/2" />
+            <div className="skeleton h-8 w-full" />
+          </div>
+        ))}
       </div>
     );
   }
 
+  if (!sessions?.length) {
+    return (
+      <Card>
+        <CardContent className="text-center py-12">
+          <CalendarCheck className="w-12 h-12 text-[#D1D5DB] mx-auto mb-3" />
+          <p className="text-base font-medium text-[#111827] mb-1">No Sessions</p>
+          <p className="text-sm text-[#6B7280] mb-4">Create your first attendance session</p>
+          <Button onClick={onShowCreate}>
+            <Plus className="w-4 h-4" /> Create Session
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
       {sessions.map((session) => (
         <SessionCard
           key={session.id}
           session={session}
-          onToggle={(id, isActive) => toggleSession.mutate({ id, is_active: isActive })}
+          onToggle={(id, is_active) => toggleSession.mutate({ id, is_active })}
         />
       ))}
     </div>

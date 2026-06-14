@@ -1,6 +1,4 @@
-import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 export type DayStatus = 'present' | 'absent' | 'no-session' | 'future' | 'pending' | 'none';
 
@@ -21,12 +19,12 @@ interface AttendanceCalendarProps {
 }
 
 const statusColors: Record<DayStatus, string> = {
-  present: 'bg-green-500 text-white hover:bg-green-600',
-  absent: 'bg-red-500 text-white hover:bg-red-600',
-  'no-session': 'bg-gray-100 text-gray-400',
-  future: 'bg-white text-gray-300',
-  pending: 'bg-yellow-400 text-white hover:bg-yellow-500',
-  none: 'bg-white text-gray-700 hover:bg-gray-100',
+  present: 'bg-[#7EAC7E] text-white hover:bg-[#6B9A6B]',
+  absent: 'bg-[#E8918F] text-white hover:bg-[#D47A78]',
+  'no-session': 'bg-[#E8DDD9] text-[#C9AFC4]',
+  future: 'bg-transparent text-[#C9AFC4]',
+  pending: 'bg-[#E8C87A] text-white hover:bg-[#DAB86A]',
+  none: 'bg-transparent text-[#493944] hover:bg-[#E8DDD9]',
 };
 
 const statusLabels: Record<DayStatus, string> = {
@@ -43,10 +41,9 @@ export function getDaysInMonth(year: number, month: number): CalendarDay[] {
   const todayStr = today.toISOString().split('T')[0];
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
-  const startPad = firstDay.getDay(); // 0=Sun
+  const startPad = firstDay.getDay();
   const days: CalendarDay[] = [];
 
-  // Previous month padding
   const prevMonthLastDay = new Date(year, month, 0).getDate();
   for (let i = startPad - 1; i >= 0; i--) {
     const d = prevMonthLastDay - i;
@@ -54,20 +51,12 @@ export function getDaysInMonth(year: number, month: number): CalendarDay[] {
     days.push({ date: dateStr, day: d, status: 'none', isCurrentMonth: false, isToday: false });
   }
 
-  // Current month
   for (let d = 1; d <= lastDay.getDate(); d++) {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const isToday = dateStr === todayStr;
-    days.push({
-      date: dateStr,
-      day: d,
-      status: isToday ? 'none' : 'none',
-      isCurrentMonth: true,
-      isToday,
-    });
+    days.push({ date: dateStr, day: d, status: 'none', isCurrentMonth: true, isToday });
   }
 
-  // Next month padding
   const endPad = 42 - days.length;
   for (let d = 1; d <= endPad; d++) {
     const nextMonth = month + 1 > 11 ? 0 : month + 1;
@@ -87,7 +76,7 @@ export function AttendanceCalendar({ year, month, getDayStatus, onDayClick }: At
     <div className="w-full">
       <div className="grid grid-cols-7 mb-1">
         {dayNames.map((name) => (
-          <div key={name} className="text-center text-xs font-medium text-gray-500 py-1">
+          <div key={name} className="text-center text-xs font-medium py-1" style={{ color: '#9B7595' }}>
             {name}
           </div>
         ))}
@@ -95,17 +84,14 @@ export function AttendanceCalendar({ year, month, getDayStatus, onDayClick }: At
       <div className="grid grid-cols-7 gap-0.5">
         {days.map((day) => {
           const status = getDayStatus(day.date);
+          const colorClass = day.isCurrentMonth ? statusColors[status] || statusColors.none : 'text-[#D5C8D0]';
+          const todayRing = day.isToday && status === 'none' ? 'ring-2 ring-[#B48FAE] ring-inset' : '';
           return (
             <button
               key={day.date}
               onClick={() => onDayClick?.(day.date, status)}
               disabled={!day.isCurrentMonth}
-              className={cn(
-                'aspect-square flex items-center justify-center text-sm rounded-lg transition-colors',
-                day.isCurrentMonth ? statusColors[status] || statusColors.none : 'text-gray-300',
-                day.isToday && status === 'none' && 'ring-2 ring-primary-500 ring-inset',
-                day.isCurrentMonth && 'cursor-pointer'
-              )}
+              className={`aspect-square flex items-center justify-center text-sm rounded-btn transition-all duration-200 ${colorClass} ${todayRing} ${day.isCurrentMonth ? 'cursor-pointer' : ''}`}
               title={statusLabels[status] || day.date}
             >
               {day.day}
@@ -136,20 +122,20 @@ export function CalendarNavigator({
           const newYear = month === 0 ? year - 1 : year;
           onChange(newYear, newMonth);
         }}
-        className="p-1.5 rounded-lg hover:bg-gray-100"
+        className="neu-secondary p-1.5 rounded-btn"
       >
-        <ChevronLeft className="w-5 h-5 text-gray-600" />
+        <ChevronLeft className="w-4 h-4" />
       </button>
-      <span className="text-base font-semibold text-gray-900">{monthName}</span>
+      <span className="text-sm font-semibold" style={{ color: '#493944' }}>{monthName}</span>
       <button
         onClick={() => {
           const newMonth = month === 11 ? 0 : month + 1;
           const newYear = month === 11 ? year + 1 : year;
           onChange(newYear, newMonth);
         }}
-        className="p-1.5 rounded-lg hover:bg-gray-100"
+        className="neu-secondary p-1.5 rounded-btn"
       >
-        <ChevronRight className="w-5 h-5 text-gray-600" />
+        <ChevronRight className="w-4 h-4" />
       </button>
     </div>
   );

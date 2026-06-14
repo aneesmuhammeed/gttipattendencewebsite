@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { NotificationProvider } from '@/contexts/NotificationContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { NotificationGate } from '@/hooks/useNotifications';
@@ -25,69 +26,81 @@ const queryClient = new QueryClient({
   },
 });
 
+function AppWithNotifications() {
+  const { profile, isLoading } = useAuth();
+
+  if (isLoading) return null;
+
+  return (
+    <NotificationProvider profile={profile}>
+      <NotificationGate>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route
+            path="/attendance"
+            element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <Attendance />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route
+              path="/sessions"
+              element={
+                <ProtectedRoute allowedRoles={['admin', 'professor']}>
+                  <Sessions />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/reports"
+              element={
+                <ProtectedRoute allowedRoles={['admin', 'professor']}>
+                  <Reports />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <Settings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/users"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <Users />
+                </ProtectedRoute>
+              }
+            />
+          </Route>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </NotificationGate>
+    </NotificationProvider>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
           <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
-          <NotificationGate>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route
-              path="/attendance"
-              element={
-                <ProtectedRoute allowedRoles={['student']}>
-                  <Attendance />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              element={
-                <ProtectedRoute>
-                  <AppLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route
-                path="/sessions"
-                element={
-                  <ProtectedRoute allowedRoles={['admin', 'professor']}>
-                    <Sessions />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/reports"
-                element={
-                  <ProtectedRoute allowedRoles={['admin', 'professor']}>
-                    <Reports />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/settings"
-                element={
-                  <ProtectedRoute allowedRoles={['admin']}>
-                    <Settings />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/users"
-                element={
-                  <ProtectedRoute allowedRoles={['admin']}>
-                    <Users />
-                  </ProtectedRoute>
-                }
-              />
-            </Route>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          </NotificationGate>
+          <AppWithNotifications />
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>

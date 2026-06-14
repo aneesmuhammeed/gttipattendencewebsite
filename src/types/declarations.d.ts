@@ -1,14 +1,29 @@
 declare module 'lucide-react' {
   import type { FC, SVGProps } from 'react';
+  export const Activity: FC<SVGProps<SVGSVGElement>>;
   export const AlertCircle: FC<SVGProps<SVGSVGElement>>;
   export const AlertTriangle: FC<SVGProps<SVGSVGElement>>;
+  export const ArrowDown: FC<SVGProps<SVGSVGElement>>;
+  export const ArrowUp: FC<SVGProps<SVGSVGElement>>;
+  export const ArrowUpDown: FC<SVGProps<SVGSVGElement>>;
+  export const Award: FC<SVGProps<SVGSVGElement>>;
+  export const BadgeCheck: FC<SVGProps<SVGSVGElement>>;
+  export const BadgeX: FC<SVGProps<SVGSVGElement>>;
   export const BarChart3: FC<SVGProps<SVGSVGElement>>;
+  export const BookOpen: FC<SVGProps<SVGSVGElement>>;
+  export const Bell: FC<SVGProps<SVGSVGElement>>;
   export const Calendar: FC<SVGProps<SVGSVGElement>>;
   export const CalendarCheck: FC<SVGProps<SVGSVGElement>>;
-  export const ChevronLeft: FC<SVGProps<SVGSVGElement>>;
-  export const ChevronRight: FC<SVGProps<SVGSVGElement>>;
+  export const CalendarDays: FC<SVGProps<SVGSVGElement>>;
+  export const CalendarX: FC<SVGProps<SVGSVGElement>>;
   export const Check: FC<SVGProps<SVGSVGElement>>;
   export const CheckCircle: FC<SVGProps<SVGSVGElement>>;
+  export const ChevronDown: FC<SVGProps<SVGSVGElement>>;
+  export const ChevronLeft: FC<SVGProps<SVGSVGElement>>;
+  export const ChevronRight: FC<SVGProps<SVGSVGElement>>;
+  export const ChevronUp: FC<SVGProps<SVGSVGElement>>;
+  export const Chrome: FC<SVGProps<SVGSVGElement>>;
+  export const ClipboardCheck: FC<SVGProps<SVGSVGElement>>;
   export const ClipboardList: FC<SVGProps<SVGSVGElement>>;
   export const Clock: FC<SVGProps<SVGSVGElement>>;
   export const Copy: FC<SVGProps<SVGSVGElement>>;
@@ -16,29 +31,51 @@ declare module 'lucide-react' {
   export const ExternalLink: FC<SVGProps<SVGSVGElement>>;
   export const Eye: FC<SVGProps<SVGSVGElement>>;
   export const EyeOff: FC<SVGProps<SVGSVGElement>>;
+  export const FileDown: FC<SVGProps<SVGSVGElement>>;
+  export const Flame: FC<SVGProps<SVGSVGElement>>;
   export const FileSpreadsheet: FC<SVGProps<SVGSVGElement>>;
   export const FileText: FC<SVGProps<SVGSVGElement>>;
+  export const Filter: FC<SVGProps<SVGSVGElement>>;
+  export const Fingerprint: FC<SVGProps<SVGSVGElement>>;
+  export const Globe: FC<SVGProps<SVGSVGElement>>;
   export const GraduationCap: FC<SVGProps<SVGSVGElement>>;
+  export const GripVertical: FC<SVGProps<SVGSVGElement>>;
+  export const History: FC<SVGProps<SVGSVGElement>>;
   export const Home: FC<SVGProps<SVGSVGElement>>;
+  export const Info: FC<SVGProps<SVGSVGElement>>;
   export const LayoutDashboard: FC<SVGProps<SVGSVGElement>>;
+  export const Link: FC<SVGProps<SVGSVGElement>>;
+  export const ListChecks: FC<SVGProps<SVGSVGElement>>;
   export const Loader2: FC<SVGProps<SVGSVGElement>>;
   export const LogOut: FC<SVGProps<SVGSVGElement>>;
   export const MapPin: FC<SVGProps<SVGSVGElement>>;
   export const Menu: FC<SVGProps<SVGSVGElement>>;
+  export const Monitor: FC<SVGProps<SVGSVGElement>>;
+  export const MoreHorizontal: FC<SVGProps<SVGSVGElement>>;
+  export const MousePointerClick: FC<SVGProps<SVGSVGElement>>;
+  export const Play: FC<SVGProps<SVGSVGElement>>;
   export const Plus: FC<SVGProps<SVGSVGElement>>;
   export const Power: FC<SVGProps<SVGSVGElement>>;
+  export const RefreshCw: FC<SVGProps<SVGSVGElement>>;
   export const Save: FC<SVGProps<SVGSVGElement>>;
+  export const Search: FC<SVGProps<SVGSVGElement>>;
+  export const Send: FC<SVGProps<SVGSVGElement>>;
   export const Settings: FC<SVGProps<SVGSVGElement>>;
+  export const Shield: FC<SVGProps<SVGSVGElement>>;
+  export const Smartphone: FC<SVGProps<SVGSVGElement>>;
+  export const Target: FC<SVGProps<SVGSVGElement>>;
+  export const Timer: FC<SVGProps<SVGSVGElement>>;
   export const TrendingUp: FC<SVGProps<SVGSVGElement>>;
   export const TrendingDown: FC<SVGProps<SVGSVGElement>>;
+  export const Upload: FC<SVGProps<SVGSVGElement>>;
   export const UserCheck: FC<SVGProps<SVGSVGElement>>;
   export const UserX: FC<SVGProps<SVGSVGElement>>;
   export const Users: FC<SVGProps<SVGSVGElement>>;
   export const X: FC<SVGProps<SVGSVGElement>>;
   export const XCircle: FC<SVGProps<SVGSVGElement>>;
+  export const Zap: FC<SVGProps<SVGSVGElement>>;
+  export const ZoomIn: FC<SVGProps<SVGSVGElement>>;
 }
-
-
 
 declare module 'jspdf-autotable' {
   const plugin: any;

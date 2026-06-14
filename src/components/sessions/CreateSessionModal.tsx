@@ -18,11 +18,10 @@ const sessionSchema = z.object({
 type SessionFormData = z.infer<typeof sessionSchema>;
 
 interface Props {
-  isOpen: boolean;
   onClose: () => void;
 }
 
-export function CreateSessionModal({ isOpen, onClose }: Props) {
+export function CreateSessionModal({ onClose }: Props) {
   const createSession = useCreateSession();
 
   const {
@@ -44,7 +43,7 @@ export function CreateSessionModal({ isOpen, onClose }: Props) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Create Attendance Session">
+    <Modal isOpen={true} onClose={onClose} title="Create Attendance Session">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <Input id="attendance_date" label="Date" type="date" error={errors.attendance_date?.message} {...register('attendance_date')} />
         <div className="grid grid-cols-2 gap-4">
@@ -52,7 +51,7 @@ export function CreateSessionModal({ isOpen, onClose }: Props) {
           <Input id="end_time" label="End Time" type="time" error={errors.end_time?.message} {...register('end_time')} />
         </div>
         <div className="flex justify-end gap-3 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button type="submit" isLoading={isSubmitting}>Create Session</Button>
         </div>
       </form>

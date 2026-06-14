@@ -66,7 +66,7 @@ async function getCollegeSettings() {
     .from('college_settings')
     .select('*')
     .limit(1)
-    .single();
+    .maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -74,34 +74,62 @@ async function getCollegeSettings() {
 export async function checkGeofence(): Promise<GeofenceResult> {
   const settings = await getCollegeSettings();
 
+  if (!settings) {
+    return {
+      withinGeofence: true,
+      distance: 0,
+      maxDistance: 0,
+      collegeLat: 0,
+      collegeLng: 0,
+    };
+  }
+
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error('Geolocation not supported'));
+      reject(new Error('Geolocation is not supported by your browser'));
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const distance = calculateDistance(
-          position.coords.latitude,
-          position.coords.longitude,
-          settings.latitude,
-          settings.longitude
-        );
+    const attempt = (highAccuracy: boolean) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const distance = calculateDistance(
+            position.coords.latitude,
+            position.coords.longitude,
+            settings.latitude,
+            settings.longitude
+          );
 
-        resolve({
-          withinGeofence: distance <= settings.geofence_radius_meters,
-          distance: Math.round(distance),
-          maxDistance: settings.geofence_radius_meters,
-          collegeLat: settings.latitude,
-          collegeLng: settings.longitude,
-        });
-      },
-      (err) => {
-        reject(new Error(`Geolocation error: ${err.message}`));
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+          resolve({
+            withinGeofence: distance <= settings.geofence_radius_meters,
+            distance: Math.round(distance),
+            maxDistance: settings.geofence_radius_meters,
+            collegeLat: settings.latitude,
+            collegeLng: settings.longitude,
+          });
+        },
+        (err) => {
+          if (highAccuracy && err.code === 3) {
+            // Timeout with high accuracy — retry without
+            attempt(false);
+          } else {
+            const messages: Record<number, string> = {
+              1: 'Location permission denied. Please allow location access in your browser settings.',
+              2: 'Location unavailable. Please try again or check your device GPS.',
+              3: 'Location request timed out. Please try again.',
+            };
+            reject(new Error(messages[err.code] || `Geolocation error: ${err.message}`));
+          }
+        },
+        {
+          enableHighAccuracy: highAccuracy,
+          timeout: highAccuracy ? 15000 : 10000,
+          maximumAge: 60000,
+        }
+      );
+    };
+
+    attempt(true);
   });
 }
 

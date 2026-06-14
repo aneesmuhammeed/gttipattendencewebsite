@@ -2,7 +2,7 @@
 // Supabase Edge Function: validate-attendance
 // Validates attendance on the backend with:
 // - Session existence & active check
-// - Department & semester match
+// - Session time expiry check
 // - Geofence check (Haversine)
 // - Duplicate attendance check
 // ============================================
@@ -40,7 +40,7 @@ function haversineDistance(
       Math.cos(toRad(lat2)) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
   return R * c;
 }
 
@@ -115,6 +115,21 @@ serve(async (req: Request) => {
       );
     }
 
+    // 1b. Check if session end_time has passed
+    const now = new Date();
+    const sessionDate = new Date(session.attendance_date + 'T' + session.end_time);
+    if (now > sessionDate) {
+      // Auto-expire the session and mark absent
+      await supabaseAdmin.rpc('expire_session_and_mark_absent', {
+        p_session_id: session.id,
+      }).catch(() => {});
+
+      return new Response(
+        JSON.stringify({ error: 'Session has expired', code: 'SESSION_EXPIRED' }),
+        { status: 403, headers }
+      );
+    }
+
     // 2. Verify student profile exists and is a student
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
@@ -141,7 +156,7 @@ serve(async (req: Request) => {
       .from('college_settings')
       .select('*')
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (settings) {
       const distance = haversineDistance(
