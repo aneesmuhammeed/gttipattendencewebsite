@@ -1,5 +1,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useTodayAttendance } from '@/hooks/useAttendance';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { motion } from 'framer-motion';
@@ -9,12 +11,28 @@ export function TodayStatus() {
   const { profile } = useAuth();
   const { data: todayRecord, isLoading } = useTodayAttendance(profile?.id);
 
+  const { data: todaySessions } = useQuery({
+    queryKey: ['today-sessions-check'],
+    queryFn: async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const { data } = await supabase
+        .from('attendance_sessions')
+        .select('id, end_time')
+        .eq('attendance_date', today)
+        .lte('end_time', currentTime);
+      return (data || []).length > 0;
+    },
+  });
+
   const getStatus = () => {
     if (isLoading) return { label: 'Checking...', icon: Clock, color: 'text-[#6B7280]', bg: 'bg-gray-50', badge: 'default' as const };
     if (todayRecord) {
       if (todayRecord.status === 'present') return { label: 'Present', icon: CheckCircle, color: 'text-success', bg: 'bg-green-50', badge: 'success' as const };
       return { label: 'Absent', icon: XCircle, color: 'text-danger', bg: 'bg-red-50', badge: 'danger' as const };
     }
+    if (todaySessions) return { label: 'Absent', icon: XCircle, color: 'text-danger', bg: 'bg-red-50', badge: 'danger' as const };
     return { label: 'Not Marked Yet', icon: Clock, color: 'text-warning', bg: 'bg-amber-50', badge: 'warning' as const };
   };
 

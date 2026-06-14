@@ -8,7 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
-import type { GeofenceResult } from '@/types';
+import { Input } from '@/components/ui/Input';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import type { GeofenceResult, AttendanceSession } from '@/types';
 import {
   MapPin,
   CheckCircle,
@@ -18,6 +21,9 @@ import {
   Loader2,
   Target,
   Fingerprint,
+  ClipboardList,
+  Search,
+  ChevronRight,
 } from 'lucide-react';
 
 function isSessionExpired(session: { attendance_date: string; end_time: string }): boolean {
@@ -28,14 +34,30 @@ function isSessionExpired(session: { attendance_date: string; end_time: string }
 
 export default function Attendance() {
   const { profile } = useAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const sessionCode = searchParams.get('session');
   const autoExpire = useAutoExpireSessions();
+  const [manualCode, setManualCode] = useState('');
 
   const { data: session, isLoading: sessionLoading, error: sessionError } = useSessionByCode(sessionCode);
   const { data: todayRecord, isLoading: todayLoading } = useTodayAttendance(profile?.id);
   const markAttendance = useMarkAttendance();
+
+  const { data: activeSessions, isLoading: activeLoading } = useQuery({
+    queryKey: ['active-sessions-today'],
+    queryFn: async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('attendance_sessions')
+        .select('id, session_code, start_time, end_time, attendance_date, is_active, created_by')
+        .eq('attendance_date', today)
+        .eq('is_active', true)
+        .order('start_time', { ascending: true });
+      if (error) throw error;
+      return data as AttendanceSession[];
+    },
+  });
 
   const [geofence, setGeofence] = useState<GeofenceResult | null>(null);
   const [geoLoading, setGeoLoading] = useState(true);
@@ -50,7 +72,6 @@ export default function Attendance() {
       .finally(() => setGeoLoading(false));
   }, []);
 
-  // Auto-expire session if past end_time
   useEffect(() => {
     if (session && session.is_active && isSessionExpired(session)) {
       autoExpire.mutate();
@@ -68,14 +89,110 @@ export default function Attendance() {
       });
       setMarked(true);
     } catch {
-      // error handled by mutation
     } finally {
       setMarking(false);
     }
   };
 
+  const handleSelectSession = (code: string) => {
+    setSearchParams({ session: code });
+  };
+
   const alreadyMarked = todayRecord || marked;
   const expired = session && !session.is_active && isSessionExpired(session);
+
+  // Show session picker when no session code is in URL
+  if (!sessionCode) {
+    return (
+      <div className="page-container">
+        <div className="max-w-xl mx-auto space-y-6 animate-fade-in-up">
+          <div className="text-center mb-2">
+            <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-primary/20">
+              <Fingerprint className="w-7 h-7 text-white" />
+            </div>
+            <h1 className="text-xl font-bold text-[#111827]">Mark Attendance</h1>
+            <p className="text-sm text-[#6B7280] mt-1">Select an active session or enter a code</p>
+          </div>
+
+          {/* Manual code entry */}
+          <Card hover={false}>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Search className="w-5 h-5 text-primary" />
+                <span className="text-sm font-semibold text-[#111827]">Enter Session Code</span>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g. att-20260614-193000"
+                  value={manualCode}
+                  onChange={(e) => setManualCode(e.target.value)}
+                />
+                <Button
+                  onClick={() => {
+                    if (manualCode.trim()) handleSelectSession(manualCode.trim());
+                  }}
+                  disabled={!manualCode.trim()}
+                  className="shrink-0"
+                >
+                  Go
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Active sessions list */}
+          <Card hover={false}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ClipboardList className="w-4 h-4 text-primary" />
+                Active Sessions Today
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {activeLoading ? (
+                <div className="space-y-2">
+                  {[1, 2].map((i) => <div key={i} className="skeleton h-14 w-full" />)}
+                </div>
+              ) : !activeSessions?.length ? (
+                <div className="text-center py-6">
+                  <Clock className="w-10 h-10 text-[#D1D5DB] mx-auto mb-2" />
+                  <p className="text-sm text-[#6B7280]">No active sessions today</p>
+                  <p className="text-xs text-[#9CA3AF] mt-1">Ask your professor to create a session</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {activeSessions.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => handleSelectSession(s.session_code)}
+                      className="w-full flex items-center justify-between p-3 rounded-btn border border-gray-100 hover:border-primary hover:bg-primary-50/30 transition-all text-left"
+                    >
+                      <div>
+                        <code className="text-sm font-mono text-primary font-medium">{s.session_code}</code>
+                        <p className="text-xs text-[#6B7280] mt-0.5">
+                          {s.start_time?.slice(0, 5)} — {s.end_time?.slice(0, 5)}
+                        </p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-[#9CA3AF]" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="text-center">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="text-sm text-[#6B7280] hover:text-primary transition-colors"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
@@ -88,7 +205,6 @@ export default function Attendance() {
           <p className="text-sm text-[#6B7280] mt-1">Verify your location to mark presence</p>
         </div>
 
-        {/* Session Info */}
         <Card hover={false}>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
@@ -128,7 +244,6 @@ export default function Attendance() {
           </CardContent>
         </Card>
 
-        {/* Geolocation Status */}
         <Card hover={false}>
           <CardContent className="space-y-3">
             <div className="flex items-center gap-2">
@@ -169,7 +284,6 @@ export default function Attendance() {
           </CardContent>
         </Card>
 
-        {/* Mark Attendance Button */}
         {session?.is_active && !alreadyMarked && !expired ? (
           <Button
             size="lg"
@@ -188,14 +302,6 @@ export default function Attendance() {
               <p className="text-sm text-[#6B7280] mt-1">You have been marked present for this session</p>
             </CardContent>
           </Card>
-        ) : !sessionCode ? (
-          <Card hover={false}>
-            <CardContent className="text-center py-6">
-              <Clock className="w-12 h-12 text-[#D1D5DB] mx-auto mb-2" />
-              <p className="text-sm text-[#6B7280]">No session link detected</p>
-              <p className="text-xs text-[#9CA3AF] mt-1">Use a valid attendance link from your professor</p>
-            </CardContent>
-          </Card>
         ) : (expired || (session && !session.is_active)) ? (
           <Card hover={false} className="border-2 border-amber-200">
             <CardContent className="text-center py-6">
@@ -204,12 +310,7 @@ export default function Attendance() {
               <p className="text-sm text-[#6B7280] mt-2">
                 This session ended at {session?.end_time?.slice(0, 5)}. If you were present, submit a correction request.
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-3"
-                onClick={() => navigate('/dashboard')}
-              >
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => navigate('/dashboard')}>
                 Go to Dashboard
               </Button>
             </CardContent>
@@ -218,10 +319,10 @@ export default function Attendance() {
 
         <div className="text-center">
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={() => setSearchParams({})}
             className="text-sm text-[#6B7280] hover:text-primary transition-colors"
           >
-            Back to Dashboard
+            Select a different session
           </button>
         </div>
       </div>

@@ -49,29 +49,63 @@ export function useReportData(filters: ReportFilters) {
   return useQuery({
     queryKey: ['report-data', filters],
     queryFn: async () => {
-      let query = supabase
+      const { start_date, end_date, student_id } = filters;
+      const defaultDate = end_date || new Date().toISOString().split('T')[0];
+
+      // 1. Get all records for the date range
+      let recordsQuery = supabase
         .from('attendance_records')
         .select(`
           *,
           profiles!attendance_records_student_id_fkey(full_name, roll_number),
-          attendance_sessions!inner(session_code)
+          attendance_sessions(session_code)
         `);
 
-      if (filters.start_date) {
-        query = query.gte('attendance_date', filters.start_date);
-      }
-      if (filters.end_date) {
-        query = query.lte('attendance_date', filters.end_date);
-      }
-      if (filters.student_id) {
-        query = query.eq('student_id', filters.student_id);
-      }
+      if (start_date) recordsQuery = recordsQuery.gte('attendance_date', start_date);
+      if (end_date) recordsQuery = recordsQuery.lte('attendance_date', end_date);
+      if (student_id) recordsQuery = recordsQuery.eq('student_id', student_id);
 
-      query = query.order('attendance_date', { ascending: false });
+      recordsQuery = recordsQuery.order('attendance_date', { ascending: false });
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
+      const { data: records, error: recordsError } = await recordsQuery;
+      if (recordsError) throw recordsError;
+      if (!records) return [];
+
+      if (student_id) return records;
+
+      // 2. Get all students to fill in missing absent students
+      const { data: students } = await supabase
+        .from('profiles')
+        .select('id, full_name, roll_number')
+        .eq('role', 'student');
+
+      if (!students) return records;
+
+      // 3. Find students with no records in this date range
+      const studentsWithRecords = new Set(records.map((r: any) => r.student_id));
+      const absentStudents = students
+        .filter((s) => !studentsWithRecords.has(s.id))
+        .map((s) => ({
+          id: `absent-${s.id}`,
+          session_id: null,
+          student_id: s.id,
+          profiles: { full_name: s.full_name, roll_number: s.roll_number },
+          status: 'absent',
+          attendance_date: defaultDate,
+          marked_at: null,
+          latitude: 0,
+          longitude: 0,
+          ip_address: null,
+          user_agent: null,
+          attendance_sessions: null,
+        }));
+
+      // 4. Combine records with absent students sorted by date desc
+      return [...records, ...absentStudents].sort((a: any, b: any) => {
+        const dateA = a.attendance_date || '';
+        const dateB = b.attendance_date || '';
+        return dateB.localeCompare(dateA);
+      });
     },
   });
 }

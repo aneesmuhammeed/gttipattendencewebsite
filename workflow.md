@@ -3,35 +3,43 @@
 ## 1. Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                    Frontend (React + Vite)                         │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐ │
-│  │ Auth UI  │  │ Sessions │  │Attend-   │  │ Reports &        │ │
-│  │Login/Reg │  │  Mgmt    │  │ ance     │  │ Export + Audit   │ │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────────┬─────────┘ │
-│  ┌────┴─────────────┴─────────────┴─────────────────┴──────────┐ │
-│  │           React Query (Caching + Mutations)                   │ │
-│  └──────────────────────────┬───────────────────────────────────┘ │
-│  ┌──────────────────────────┴───────────────────────────────────┐ │
-│  │              Supabase Client (supabase-js)                     │ │
-│  └──────────────────────────┬───────────────────────────────────┘ │
-└─────────────────────────────┼───────────────────────────────────┘
-                              │
-┌─────────────────────────────┼───────────────────────────────────┐
-│              Supabase Backend (Project: wdhjtfmwjwmaibpayuea)     │
-│  ┌──────────────────────────┴───────────────────────────────────┐ │
-│  │              Edge Functions                                    │ │
-│  │  validate-attendance (Deno runtime)                            │ │
-│  └──────────────────────────┬───────────────────────────────────┘ │
-│                             │                                     │
-│  ┌──────────────────────────┴───────────────────────────────────┐ │
-│  │              PostgreSQL Database                               │ │
-│  │  Tables: profiles, attendance_sessions, attendance_records,   │ │
-│  │          college_settings, attendance_audit_logs,             │ │
-│  │          attendance_summary, attendance_correction_requests   │ │
-│  │  RLS Policies + SECURITY DEFINER helper functions             │ │
-│  └───────────────────────────────────────────────────────────────┘ │
-└───────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     Frontend (React 18 + Vite 5)                          │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  react-router-dom (SPA routes + ProtectedRoute role guards)          │ │
+│  │  @tanstack/react-query (server state, caching, mutations, refetch)    │ │
+│  │  react-hook-form + zod (form validation)                              │ │
+│  │  react-hot-toast (toast notifications)                                │ │
+│  │  lucide-react (icons), recharts (charts), framer-motion (animations)  │ │
+│  ├──────────────────────────────────────────────────────────────────────┤ │
+│  │  AuthContext          NotificationContext                              │ │
+│  │  (Supabase Auth)      (role-based Realtime subscriptions)             │ │
+│  ├──────────────────────────────────────────────────────────────────────┤ │
+│  │  @supabase/supabase-js — Client                                       │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│                           │                                                │
+│                           ▼                                                │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  7 Hooks: useSessions, useAttendance, useReports, useAnalytics,       │ │
+│  │           useAuditLogs, useCorrectionRequests, useBrowserNotifications│ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────┬───────────────────────────────────────────────┘
+                           │
+┌──────────────────────────┴───────────────────────────────────────────────┐
+│              Supabase Backend (Project: wdhjtfmwjwmaibpayuea)              │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  Edge Function: validate-attendance (Deno)                            │ │
+│  │  Validates: session active, student role, geofence (Haversine),       │ │
+│  │  end_time expiry (calls expire_session_and_mark_absent RPC),          │ │
+│  │  duplicate check (unique_student_per_day index)                       │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  PostgreSQL 15 — 7 tables, 12+ triggers, 4 SECURITY DEFINER RPCs     │ │
+│  │  profiles | college_settings | attendance_sessions |                  │ │
+│  │  attendance_records | attendance_audit_logs | attendance_summary |    │ │
+│  │  attendance_correction_requests                                       │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 2. Prerequisites & Setup
@@ -47,6 +55,7 @@ VITE_SUPABASE_ANON_KEY=<your-anon-key-from-supabase-dashboard>
 - **Project URL**: `https://wdhjtfmwjwmaibpayuea.supabase.co`
 - **Project ID**: `wdhjtfmwjwmaibpayuea`
 - Find keys at: Dashboard → Project Settings → API
+- Realtime must be enabled for notification subscriptions
 
 ## 3. Database Schema
 
@@ -100,7 +109,7 @@ Constraint: `CHECK (start_time < end_time)`
 | marked_at | TIMESTAMPTZ | NOT NULL DEFAULT NOW() |
 | latitude | DOUBLE PRECISION | NOT NULL |
 | longitude | DOUBLE PRECISION | NOT NULL |
-| status | TEXT | NOT NULL DEFAULT 'present' |
+| status | TEXT | NOT NULL DEFAULT 'present' (values: 'present', 'absent') |
 | attendance_date | DATE | NOT NULL DEFAULT CURRENT_DATE |
 | ip_address | TEXT | NULLABLE |
 | user_agent | TEXT | NULLABLE |
@@ -120,8 +129,8 @@ Unique constraints:
 | ip_address | TEXT | NULLABLE |
 | latitude | DOUBLE PRECISION | NULLABLE |
 | longitude | DOUBLE PRECISION | NULLABLE |
-| device_info | TEXT | (Mobile / Tablet / Desktop — parsed from user_agent) |
-| browser | TEXT | (Chrome / Firefox / Safari / Edge — parsed from user_agent) |
+| device_info | TEXT | (Mobile / Tablet / Desktop) |
+| browser | TEXT | (Chrome / Firefox / Safari / Edge) |
 | user_agent | TEXT | NULLABLE |
 | action_type | TEXT | NOT NULL DEFAULT 'mark' |
 
@@ -142,7 +151,7 @@ Unique constraints:
 | id | UUID | PK DEFAULT uuid_generate_v4() |
 | student_id | UUID | NOT NULL FK → profiles(id) |
 | session_id | UUID | NULLABLE FK → attendance_sessions(id) |
-| date | DATE | NULLABLE (alternative to session_id) |
+| date | DATE | NULLABLE |
 | reason | TEXT | NOT NULL |
 | status | TEXT | NOT NULL DEFAULT 'pending' CHECK (IN 'pending','approved','rejected') |
 | reviewed_by | UUID | FK → profiles(id) NULLABLE |
@@ -151,6 +160,7 @@ Unique constraints:
 
 ### 3.2 Indexes
 - `idx_sessions_code` ON attendance_sessions(session_code)
+- `idx_sessions_date` ON attendance_sessions(attendance_date)
 - `idx_attendance_session` ON attendance_records(session_id)
 - `idx_attendance_student` ON attendance_records(student_id)
 - `idx_attendance_date` ON attendance_records(attendance_date)
@@ -168,33 +178,27 @@ Unique constraints:
 
 #### `handle_new_user()` — Auto-create profile on signup
 - Trigger: `on_auth_user_created` AFTER INSERT ON auth.users
-- Extracts from `raw_user_meta_data`: full_name, role, roll_number
-- Defaults role to 'student' if not provided
-- Runs with SECURITY DEFINER (bypasses RLS)
+- Extracts from `raw_user_meta_data`: full_name, role (defaults to 'student'), roll_number
+- SECURITY DEFINER
 
 #### `update_updated_at_column()` — Auto-timestamp
-- Trigger: `set_profiles_updated_at`, `set_college_settings_updated_at`
-- Runs BEFORE UPDATE on profiles and college_settings
+- Triggers: `set_profiles_updated_at`, `set_college_settings_updated_at`
+- BEFORE UPDATE on profiles and college_settings
 
 #### `log_attendance_audit()` — Auto-audit on mark
 - Trigger: `on_attendance_inserted` AFTER INSERT ON attendance_records
-- Parses user_agent into browser (Chrome/Firefox/Safari/Edge) and device (Mobile/Tablet/Desktop)
-- Inserts row into attendance_audit_logs with all metadata
-
-#### `recalc_attendance_summary()` — Manual recalc function
-- Called by the trigger below, or can be called manually
-- Counts total/present/absent from attendance_records for a given student
-- UPSERTs into attendance_summary
+- Parses user_agent → browser (Chrome/Firefox/Safari/Edge) and device (Mobile/Tablet/Desktop)
+- Inserts into attendance_audit_logs
 
 #### `update_attendance_summary()` — Auto-summary on attendance change
 - Trigger: `on_attendance_summary_update` AFTER INSERT OR UPDATE ON attendance_records
 - Calls `recalc_attendance_summary(NEW.student_id)`
 
-### 3.4 Helper Functions (SECURITY DEFINER — bypass RLS)
+### 3.4 Helper Functions (SECURITY DEFINER)
 
 ```sql
-is_admin()     → BOOLEAN  — Checks if auth.uid() has role='admin'
-is_professor() → BOOLEAN  — Checks if auth.uid() has role='professor'
+is_admin()     → BOOLEAN  — auth.uid() has role='admin'
+is_professor() → BOOLEAN  — auth.uid() has role='professor'
 ```
 
 Used in RLS policies to prevent infinite recursion.
@@ -204,15 +208,32 @@ Used in RLS policies to prevent infinite recursion.
 approve_correction_request(request_id UUID, reviewer_id UUID) → void
 ```
 - Marks request as 'approved'
-- If request has a `date` (not session_id), finds the first session for that date
-- UPSERTs attendance_records with status='present' for the student on that date (ON CONFLICT UPDATE)
-- If request has a session_id (legacy), inserts attendance_records for that session
+- If request has a `date`, finds first session for that date
+- UPSERTs attendance_records with status='present' (ON CONFLICT student_id, attendance_date DO UPDATE)
+- If session_id provided (legacy), inserts with ON CONFLICT DO NOTHING
 
 #### Correction Rejection Function
 ```sql
 reject_correction_request(request_id UUID, reviewer_id UUID) → void
 ```
 - Marks request as 'rejected'
+
+#### `recalc_attendance_summary(p_student_id UUID)` → void
+- Counts total sessions (WHERE attendance_date <= CURRENT_DATE) vs present records
+- UPSERTs into attendance_summary
+
+### 3.5 Auto-Absent RPCs (Migration 006)
+
+#### `expire_session_and_mark_absent(p_session_id UUID)` → void
+- Deactivates the session (is_active = FALSE)
+- Iterates all students with role='student'
+- For each student with NO record for that session's date, inserts `status='absent'` record
+- Uses `ON CONFLICT (student_id, attendance_date) DO NOTHING` — safe for repeated calls
+
+#### `expire_all_past_sessions()` → INTEGER
+- Finds all sessions WHERE is_active=TRUE AND (attendance_date < today OR (attendance_date=today AND end_time <= now))
+- Calls `expire_session_and_mark_absent` for each
+- Returns count of expired sessions
 
 ## 4. RLS Policies
 
@@ -228,78 +249,79 @@ reject_correction_request(request_id UUID, reviewer_id UUID) → void
 ### 4.2 college_settings
 | Policy | Operation | Rule |
 |--------|-----------|------|
-| Anyone can read college settings | SELECT | true |
-| Only admins can update college settings | UPDATE | is_admin() |
+| Anyone can read | SELECT | true |
+| Only admins can update | UPDATE | is_admin() |
 
 ### 4.3 attendance_sessions
 | Policy | Operation | Rule |
 |--------|-----------|------|
 | Anyone can read sessions by code | SELECT | true |
-| Admins and professors can create sessions | INSERT | is_admin() OR is_professor() |
-| Creators and admins can update sessions | UPDATE | created_by = auth.uid() OR is_admin() |
-| Admins can delete sessions | DELETE | is_admin() |
+| Admins and professors can create | INSERT | is_admin() OR is_professor() |
+| Creators and admins can update | UPDATE | created_by = auth.uid() OR is_admin() |
+| Admins can delete | DELETE | is_admin() |
 
 ### 4.4 attendance_records
 | Policy | Operation | Rule |
 |--------|-----------|------|
-| Students can view own attendance | SELECT | student_id = auth.uid() |
-| Professors can view their session attendance | SELECT | EXISTS(session.created_by = auth.uid()) |
-| Admins can view all attendance | SELECT | is_admin() |
-| Students can insert own attendance | INSERT | student_id = auth.uid() |
-| Professors can update attendance in their sessions | UPDATE | EXISTS(session.created_by = auth.uid()) |
-| Admins can update any attendance | UPDATE | is_admin() |
+| Students can view own | SELECT | student_id = auth.uid() |
+| Professors can view their sessions' | SELECT | EXISTS(session.created_by = auth.uid()) |
+| Admins can view all | SELECT | is_admin() |
+| Students can insert own | INSERT | student_id = auth.uid() |
+| Professors can update their sessions' | UPDATE | EXISTS(session.created_by = auth.uid()) |
+| Admins can update any | UPDATE | is_admin() |
 
 ### 4.5 attendance_audit_logs
 | Policy | Operation | Rule |
 |--------|-----------|------|
-| Students can view own audit logs | SELECT | student_id = auth.uid() |
-| Professors can view audit for their sessions | SELECT | EXISTS(session.created_by = auth.uid()) |
-| Admins can view all audit logs | SELECT | is_admin() |
+| Students can view own | SELECT | student_id = auth.uid() |
+| Professors can view for their sessions | SELECT | EXISTS(session.created_by = auth.uid()) |
+| Admins can view all | SELECT | is_admin() |
 
 ### 4.6 attendance_summary
 | Policy | Operation | Rule |
 |--------|-----------|------|
-| Students can view own summary | SELECT | student_id = auth.uid() |
-| Professors can view all summaries | SELECT | is_professor() |
-| Admins can view all summaries | SELECT | is_admin() |
+| Students can view own | SELECT | student_id = auth.uid() |
+| Professors can view all | SELECT | is_professor() |
+| Admins can view all | SELECT | is_admin() |
 
 ### 4.7 attendance_correction_requests
 | Policy | Operation | Rule |
 |--------|-----------|------|
-| Students can view own requests | SELECT | student_id = auth.uid() |
-| Students can create requests | INSERT | student_id = auth.uid() |
-| Professors can view requests for their sessions | SELECT | EXISTS(session.created_by = auth.uid()) |
-| Professors can update requests for their sessions | UPDATE | EXISTS(session.created_by = auth.uid()) |
-| Admins can view all requests | SELECT | is_admin() |
-| Admins can update all requests | UPDATE | is_admin() |
+| Students can view own | SELECT | student_id = auth.uid() |
+| Students can create | INSERT | student_id = auth.uid() |
+| Professors can view for their sessions | SELECT | EXISTS(session.created_by = auth.uid()) |
+| Professors can update for their sessions | UPDATE | EXISTS(session.created_by = auth.uid()) |
+| Admins can view all | SELECT | is_admin() |
+| Admins can update all | UPDATE | is_admin() |
 
 ## 5. Roles & Permissions
 
 ### 5.1 Admin
 - Full access to everything
-- View all users, promote students to professors
-- Configure geofence settings
-- Create/manage sessions
+- View all users, promote students to professors (Users page)
+- Configure geofence settings (Settings page)
+- Create/manage all sessions
 - View all reports, audit trail, correction requests
 - Export data (CSV, Excel, PDF)
-- **Only one admin exists** (set via SQL, never via UI)
+- Only one admin exists (set via SQL, never via UI)
 
 ### 5.2 Professor
-- Create attendance sessions (only date + time fields)
-- View/manage sessions they created (activate/deactivate)
+- Create attendance sessions (date + start_time + end_time only)
+- View/manage sessions they created (activate/deactivate via toggle)
+- Auto-absent marking on deactivation via RPC
 - View attendance records for their sessions
 - View reports with student names
-- **Calendar View**: Click any date → see which students were present/absent → toggle per-student status
-- **Correction Requests**: Approve/reject pending requests from Reports → Corrections tab
-- **Audit Trail**: View audit logs for their sessions
+- Approve/reject correction requests
+- View audit logs for their sessions
+- Access Session History tab
 
 ### 5.3 Student
-- Register with email + password + roll number (auto-UPPERCASED name)
-- Mark attendance via session link (geofence-gated)
-- View own attendance history, percentage, heatmap, and trend
-- **Calendar View**: Month grid with day colors (green=present, red=absent, gray=no session)
-- **Correction Requests**: Click absent day → submit correction/leave request with reason
+- Register with email + password + roll number (auto-UPPERCASED full_name)
+- Mark attendance via session link (geofence-gated + Edge Function validated)
+- View own attendance history, percentage, heatmap, trend, streak, health gauge
+- Submit correction/leave requests with reason
 - Track correction request status (pending/approved/rejected)
+- Real-time notifications for correction status changes + new sessions
 
 ## 6. Authentication Flow
 
@@ -323,77 +345,62 @@ UPDATE profiles SET role = 'admin' WHERE email = 'admin@test.edu';
 ```
 
 ### 6.4 Professor Promotion
-Admin goes to **Users** page → clicks "Promote to Professor" on a student
+Admin → **Users** page → "Promote to Professor" button on any student row
 
 ## 7. Session Creation Flow
 
 ### 7.1 Professor Creates Session
-1. Logged in as professor → **Sessions** page → **Create Session**
-2. Form shows only: Date, Start Time, End Time
-3. No title, department, or semester fields
-4. Session code auto-generated: `att-YYYYMMDD-HHmmss` (e.g., `att-20260614-193000`)
-5. Click **Create Session** → card appears with Copy Link button
-6. Copy Link copies: `http://localhost:5173/attendance?session=att-20260614-193000`
+1. **Sessions** page → **New Session** button → CreateSessionModal
+2. Form: Date, Start Time, End Time (no title/department/semester)
+3. Session code auto-generated: `att-YYYYMMDD-HHmmss`
+4. On create: inserted with is_active=TRUE, creator linked
+5. SessionCard appears with Copy Link / Open / Deactivate buttons
+6. Copy Link copies: `http://localhost:5173/attendance?session=att-YYYYMMDD-HHmmss`
 
-### 7.2 Session Link Format
-```
-http://localhost:5173/attendance?session={session_code}
-```
+### 7.2 Session Toggle Behavior
+- **Deactivate**: Calls `expire_session_and_mark_absent` RPC → deactivates session + inserts `absent` records for all unmarked students
+- **Activate**: Simple UPDATE `is_active = true`
+
+### 7.3 Auto-Expire on Sessions Page
+- `useAutoExpireSessions` runs on mount
+- Calls `expire_all_past_sessions` RPC → batch-expires all past sessions
+- Invalidates sessions query if any were expired
 
 ## 8. Attendance Marking Flow
 
 ### 8.1 Student Opens Link
-1. Navigates to `/attendance?session=att-20260614-193000`
-2. `AttendanceValidator` component loads and validates:
+1. Navigates to `/attendance?session=att-YYYYMMDD-HHmmss`
+2. Auto-expire check: if session past end_time, RPC called before proceeding
+3. `useSessionByCode` fetches session via `.maybeSingle()` (no crash on null)
 
-   **Step 1 — Authentication**
-   - Must be logged in
-   - ProtectedRoute redirects to login if not
+**Validations (in order):**
+1. **Authentication** — ProtectedRoute redirects to login
+2. **Session exists** — Invalid code shows "Invalid Session" badge
+3. **Session active** — Inactive shows "Expired" badge
+4. **Time window** — current time vs end_time; expired shows "Session Expired" card with dashboard link
+5. **Geolocation** — high-accuracy GPS (15s timeout) with fallback to low-accuracy (10s); calculates Haversine distance; shows within/outside campus status; button disabled if outside
+6. **Already marked** — `useTodayAttendance` checks for existing record; shows "Attendance Marked" card if found
+7. **Mark button** — calls Edge Function for server-side validation
 
-   **Step 2 — Session Exists**
-   - Fetches session by session_code from DB
-   - Shows "Session Not Found" if invalid
-
-   **Step 3 — Session Active**
-   - Checks `is_active` flag
-   - Shows "Session Expired" if inactive
-
-   **Step 4 — Time Window (Frontend only)**
-   - Compares current time to start_time / end_time
-   - Shows "Not Yet Started" or "Session Expired"
-
-   **Step 5 — Geofence Check (Browser Geolocation)**
-   - `GeofenceChecker` component requests browser location
-   - Calculates distance from college using Haversine formula
-   - Shows distance and whether within geofence
-   - **Mark Attendance button disabled until inside geofence**
-
-   **Step 6 — Backend Validation (Edge Function)**
-   - On submit, calls: `POST /functions/v1/validate-attendance`
-   - Validates:
-     - Session exists & is active
-     - Profile exists & role = 'student'
-     - Geofence distance ≤ allowed radius
-     - No duplicate attendance for this date
-   - On success → inserts record, shows "Attendance Marked!"
-   - Triggers auto-audit log and summary recalculation
-
-### 8.2 Edge Function Details
+### 8.2 Edge Function: validate-attendance
 - **URL**: `https://wdhjtfmwjwmaibpayuea.supabase.co/functions/v1/validate-attendance`
-- **Request body**: `{ session_code, latitude, longitude }`
-- **Auth**: Bearer token in Authorization header
-- **Validations**:
-  1. Session exists + is_active = true
-  2. Profile exists + role = 'student'
-  3. Distance using Haversine ≤ college_settings.geofence_radius_meters
-  4. No existing record with same student_id + attendance_date
-  5. On pass: INSERT into attendance_records
-- **Response on success**: `{ success: true, message: "...", record: {...} }`
-- **Response on failure**: `{ error: "...", code: "ERROR_CODE" }`
+- **Method**: POST
+- **Auth**: Bearer token (Authorization header)
+- **Body**: `{ session_code, latitude, longitude }`
+- **Runtime**: Deno with supabase-js
 
-Error codes: `SESSION_NOT_FOUND`, `SESSION_INACTIVE`, `NOT_STUDENT`, `OUTSIDE_GEOFENCE`, `ALREADY_MARKED`
+**Validation chain:**
+1. Auth token → `supabaseAdmin.auth.getUser(token)`
+2. Session exists + is_active=true → `supabaseAdmin.from('attendance_sessions').select('*').eq('session_code', session_code).single()`
+3. Session end_time check → `now > sessionDate + endTime` → if expired, calls `expire_session_and_mark_absent` RPC, returns SESSION_EXPIRED
+4. Profile exists + role = 'student' → `supabaseAdmin.from('profiles').select('*').eq('id', user.id).single()`
+5. Geofence check → Haversine distance vs `college_settings.geofence_radius_meters` (uses .maybeSingle())
+6. Duplicate check → `supabaseAdmin.from('attendance_records').select('id').eq('student_id', user.id).eq('attendance_date', currentDate).maybeSingle()`
+7. On pass → INSERT into attendance_records with ip_address, user_agent
 
-### 8.3 Haversine Formula
+**Error codes**: `SESSION_NOT_FOUND` (404), `SESSION_INACTIVE` (403), `SESSION_EXPIRED` (403), `NOT_STUDENT` (403), `OUTSIDE_GEOFENCE` (403), `ALREADY_MARKED` (409)
+
+### 8.3 Haversine Formula (both client + Edge Function)
 ```javascript
 function haversineDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000; // Earth radius in meters
@@ -402,302 +409,308 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   const dLon = toRad(lon2 - lon1);
   const a = Math.sin(dLat/2)**2 +
             Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c; // distance in meters
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+  return R * c;
 }
 ```
+Note: Uses `Math.max(0, 1 - a)` to prevent `NaN` from floating-point rounding.
 
 ### 8.4 One-Attendance-Per-Day Enforcement
-- Database-level: UNIQUE INDEX on (student_id, attendance_date)
-- Edge Function checks before insert
-- Duplicate returns 409 with code `ALREADY_MARKED`
+- DB: UNIQUE INDEX on (student_id, attendance_date)
+- Edge Function checks before insert (returns 409)
+- App-level duplicate guard in useTodayAttendance
 
-## 9. Dashboard Views
+## 9. Dashboards
 
-### 9.1 Admin Dashboard
-- **Total Students**: Count of profiles with role='student'
-- **Present Today**: Count of attendance_records for today
-- **Absent Today**: Total Students - Present Today
-- **Attendance %**: (Present / Total) × 100
-- **Active Sessions**: Count of sessions where is_active=true AND date=today
-- **Defaulters**: Students below 75% attendance (list with names + roll + percentage)
-- **Heatmap**: 12-month attendance bar chart
-- **Trend**: 30-day attendance bar chart
-- Auto-refreshes every 30 seconds
+### 9.1 Admin Dashboard (AdminDashboard.tsx)
+- **6 KPI cards**: Total Students, Present Today, Absent Today, Attendance %, Active Sessions, Defaulters <75%
+- **TrendChart**: 90-day area chart (Recharts) with gradient fill, custom tooltip
+- **RecentActivityFeed**: Real-time timeline of attendance marks + correction status changes
+- **ContributionHeatmap**: GitHub-style full-year grid (present/absent/no-session/correction colors)
+- **Defaulters panel**: Scrollable list with names, roll numbers, percentage badges
+- **AuditLogTable**: Full audit trail inline
 
-### 9.2 Professor Dashboard
-- **Total Sessions**: Count of sessions created
-- **Active Sessions**: Count of currently active sessions
-- **Quick Actions**: Create Session, View Reports buttons
-- **Active Sessions List**: Shows last 5 active sessions with codes and times
-- **Calendar Toggle**: Shows/hides ProfessorCalendarView
-- **ProfessorCalendarView**: Month grid with color-coded days (green=all present, red=all absent, yellow=mixed, gray=no session). Click a date → right panel shows all students with present/absent toggle button per student. Professor can mark/unmark attendance for any student on any date. If no session exists for that date, prompts to create one first.
+### 9.2 Professor Dashboard (ProfessorDashboard.tsx)
+- **4 KPI cards**: Present Today, Absent Today, Active Sessions, Pending Corrections
+- **TrendChart**: 30-day area chart
+- **RecentActivityFeed**: Attendance marking timeline
+- **3 Tabs**: Active Sessions | Session History | Corrections
+- Active Sessions: Grid of SessionCards with activate/deactivate toggle
+- Session History: Grid of inactive SessionCards
+- Corrections: Pending correction requests with Approve/Reject buttons
+- CreateSessionModal integration
 
-### 9.3 Student Dashboard
-- **Today's Status**: Present (green) or Not Marked (gray)
-- **Total Classes**: Count of sessions held (not just records — fixed logic)
-- **Attendance %**: (present / total sessions) × 100. Uses sessions as denominator.
-- **Correction Requests**: Total count + pending count
-- **Recent Attendance**: Last 10 records with dates and status badges
-- **Calendar Toggle**: Shows/hides StudentCalendarView
-- **StudentCalendarView**: Month grid with day colors (green=present, red=absent, gray=no session, white=future). Click a date → right panel shows status badge. Click absent day → opens CorrectionRequestModal with date preset.
-- **Risk Prediction**: What-if calculator showing attendance % after N more absences
-- **Heatmap**: 12-month attendance bar chart (compares sessions vs present)
-- **Trend**: 30-day attendance bar chart (compares sessions vs present)
-- **Quick Actions**: Request Correction button, Show Calendar button
-- **Notifications**: Real-time push notifications for correction approve/reject via Postgres changes subscription. Missed attendance detection on page load.
+### 9.3 Student Dashboard (StudentDashboard.tsx)
+- **ProgressRing**: SVG ring showing overall attendance % (animated fill via framer-motion)
+- **3 KPI cards**: Present Days, Absent Days, Pending Corrections
+- **TrendChart**: 90-day area chart
+- **TodayStatus**: Current day's attendance status card
+- **StreakCard**: Current + longest attendance streak
+- **ContributionHeatmap**: Full-year activity grid
+- **HealthGauge**: SVG arc gauge with 4 levels (Excellent/Good/Warning/Critical)
+- **SummaryCard**: 4-grid stats (Total Sessions, Present, Absent, Corrections)
+- **CorrectionWidget**: Pending/Approved/Rejected breakdown
+- **RecentActivityFeed**: Personal attendance timeline
+- **Request Correction** + **Mark Attendance** buttons
 
-## 10. Reports & Export
+## 10. Premium Analytics Components
 
-### 10.1 Report Tabs
-Reports page has three tabs:
-1. **Reports** — Attendance data table with filters
-2. **Audit Trail** — Detailed audit log table
-3. **Corrections** — Pending and processed correction requests
+| Component | Description | Data Source |
+|-----------|-------------|-------------|
+| **ContributionHeatmap** | GitHub-style full-year day grid (present=green, absent=red, no-session=gray, correction=amber) | `useAttendanceTrend` + session comparison |
+| **TrendChart** | Recharts AreaChart with gradient fill, custom tooltip, 30/90-day configurable | `useAttendanceTrend` |
+| **HealthGauge** | SVG semicircular arc gauge with 4 color-coded levels + animated stroke | Live percentage |
+| **StreakCard** | Current + longest consecutive present-day streak | Computed from `useAttendanceTrend` |
+| **TodayStatus** | Card showing today's present/absent/not-marked status | `useTodayAttendance` |
+| **SummaryCard** | 2×2 grid: Total Sessions, Present, Absent, Corrections | `useStudentSummary` + `useMyCorrectionRequests` |
+| **ActivityFeed** | Color-coded timeline (marked=blue, correction-submitted=amber, approved=green, rejected=red) | `useAttendanceRecords` + `useCorrectionRequests` |
+| **CorrectionWidget** | 3-column widget: Pending/Approved/Rejected counts with badges | `useMyCorrectionRequests` |
 
-### 10.2 Report Filters
-- **Preset ranges**: Daily, Weekly (Mon-Sun), Monthly, Yearly
-- **Custom date range**: Start Date + End Date pickers
-- **Student filter**: Dropdown showing all students (with roll numbers)
+## 11. Real-Time Notification System
 
-### 10.3 Report Data
-Fetches from `attendance_records` joined with `profiles` (student name, roll number).
-Columns in table: Date, Student, Roll No, Status, Time
+### 11.1 Architecture
+- `NotificationContext` provides global notification state with Supabase Realtime subscriptions
+- Notifications persisted in `localStorage` (max 50, key `attendify-notifications`)
+- `AppNotification` interface: id, title, message, type (info/success/warning/error), time, read, timestamp, link
+- Browser Notification API for system-level notifications (silently fails if not granted)
 
-### 10.4 Audit Trail Table
-- Columns: Date, Student, Roll, Session, Status, Time, Device, Browser, IP, GPS Coordinates
-- Shows all metadata captured during attendance marking
-- Filtered by role (students see own, professors see their sessions, admins see all)
+### 11.2 Role-Based Subscriptions
 
-### 10.5 Correction Requests Tab
-- **For Professors/Admins**: List of all correction requests with student name, roll, date, reason, status
-- Pending requests show Approve / Reject buttons
-- Approved/rejected requests show reviewer and timestamp
-- **For Students**: List of own requests with status badges
+**Student subscriptions:**
+- `attendance_correction_requests` UPDATE filtered by `student_id=eq.{id}` → approve/reject notifications
+- `attendance_sessions` INSERT → new session notification with link
 
-### 10.6 Export Formats
-| Format | Library | File Extension |
-|--------|---------|---------------|
-| CSV | Native (Blob) | .csv |
-| Excel | xlsx (SheetJS) | .xlsx |
-| PDF | jsPDF + jspdf-autotable | .pdf |
+**Professor subscriptions:**
+- `attendance_correction_requests` INSERT → new correction request notification (with link to dashboard)
+- `attendance_records` INSERT → student marked attendance notification
 
-Export buttons appear next to filters; all three export the currently filtered data.
+**Admin subscriptions:**
+- All professor subscriptions +
+- `attendance_sessions` INSERT → session created notification
 
-## 11. Geofencing
+**All roles:**
+- `attendance_sessions` UPDATE `is_active=eq.false` → session expired notification
 
-### 11.1 Configuration
-Admin configures in **Settings** page:
-- **Latitude**: Default 11.0168 (Coimbatore, India)
-- **Longitude**: Default 76.9558
-- **Radius**: Default 200 meters
+### 11.3 Deduplication
+- `processedRef` (Set<string>) tracks processed event IDs
+- Keys use format: `{eventType}-{recordId}`
+- Entries auto-cleaned after 5 seconds
 
-### 11.2 Client-Side Check
-1. `GeofenceChecker` component mounts → requests location via `navigator.geolocation.getCurrentPosition()`
-2. Uses high accuracy, 10-second timeout
-3. Calculates Haversine distance from college coordinates
-4. Shows result: green "You are within campus (Xm)" or red "You are Xm away (max: Ym)"
-5. Disables "Mark Attendance" button if outside geofence
+### 11.4 NotificationBell Component
+- Bell icon with unread count badge (red circle, max "9+")
+- Dropdown panel with type-colored icons, title, message, relative time
+- Unread items highlighted with blue background
+- Mark all read button, individual click handler (marks read + navigates to link)
+- Click outside to close
 
-### 11.3 Server-Side Check (Edge Function)
-Same Haversine calculation repeated on backend for security (cannot be bypassed by modifying frontend).
+### 11.5 useBrowserNotifications (renamed from useNotifications)
+- `requestPermission()` → requests Notification API permission
+- `send(title, body, tag?)` → sends system notification
+- `NotificationGate` component auto-requests permission 5s after mount
 
-## 12. Calendar-Based Attendance
+## 12. Geo-absent Logic
 
-### 12.1 Professor Calendar View (`ProfessorCalendarView`)
-- Uses shared `AttendanceCalendar` component (month grid)
-- Colors: green (all present that day), red (all absent), yellow (mixed), gray (no session), white (future)
-- Click any date → right panel shows all students with their current status
-- Each student row has two buttons: CheckCircle (mark present) and XCircle (mark absent)
-- UPSERT logic: if record exists, updates status; if not, finds first session of the day and creates record
-- If no session exists for the selected date, shows an error: "Create a session first"
+### 12.1 How Absence is Tracked
+- **Present**: Explicit `status='present'` record in `attendance_records`
+- **Absent**: Explicit `status='absent'` record inserted when session expires/marked inactive
+- **Counting**: `total_sessions - present_records` for summary calculations
+- Absent records exist mainly for audit trail visibility, not for statistical counting
 
-### 12.2 Student Calendar View (`StudentCalendarView`)
-- Uses shared `AttendanceCalendar` component (month grid)
-- Colors: green (present), red (absent), gray (no session), white (future)
-- Determines status: compares enrolled sessions vs. own attendance records
-- Click any date → right panel shows status badge
-- Click absent day → auto-opens CorrectionRequestModal with date pre-selected
-- Student types reason and submits
+### 12.2 Auto-Absent Marking Flow
+1. **Manual deactivation**: Professor clicks Deactivate → `useToggleSession` → `expire_session_and_mark_absent` RPC
+2. **Time-based expiry**: Sessions page `useAutoExpireSessions` on mount → `expire_all_past_sessions` RPC
+3. **Attendance page check**: Auto-expires session if past end_time before showing expired state
+4. **Edge Function check**: If session end_time passed, calls RPC before returning SESSION_EXPIRED
 
-### 12.3 Shared Calendar Component (`AttendanceCalendar`)
-- Pure presentational: `getDaysInMonth()`, `AttendanceCalendar`, `CalendarNavigator`
-- `getDayStatus` callback prop lets parent determine color per day
-- `onDayClick(date, status)` callback for interaction
-- `CalendarNavigator` renders month/year with left/right arrows
-- Supports padding days from prev/next month
-- Today highlighted with ring-2
+### 12.3 RPC Implementation
+- `expire_session_and_mark_absent(p_session_id)`:
+  - UPDATE attendance_sessions SET is_active = FALSE
+  - Loop over profiles WHERE role='student' AND NOT EXISTS (record for that date)
+  - INSERT INTO attendance_records (..., status='absent') ON CONFLICT DO NOTHING
+- `expire_all_past_sessions()`:
+  - Loop over sessions WHERE is_active=TRUE AND (date < today OR (date=today AND end_time <= now))
+  - Call expire_session_and_mark_absent for each
 
-## 13. Analytics
+## 13. Correction Request Flow
 
-### 13.1 Attendance Heatmap (`AttendanceHeatmap`)
-- 12-month bar chart using Recharts
-- Fetches from DB: monthly present/total grouped by month
-- Each bar shows percentage, colored green (≥75%) or red (<75%)
-- Y-axis: 0–100%
+### 13.1 Student Requests Correction
+1. From StudentDashboard → "Request Correction" button or click absent day in calendar
+2. `CorrectionRequestModal` opens with date pre-selected (or manual entry)
+3. Student types reason, submits → INSERT into `attendance_correction_requests`
+4. Auto-links to a session if one exists for that date
 
-### 13.2 Attendance Trend (`AttendanceTrend`)
-- 30-day bar chart using Recharts
-- Fetches from DB: daily present/total
-- Shows daily attendance percentage trend
-- Useful for spotting patterns
+### 13.2 Professor Reviews Request
+1. From ProfessorDashboard → Corrections tab → sees pending requests
+2. Each card: student name, reason, date, Approve/Reject buttons
+3. Approve → calls `approve_correction_request(request_id, reviewer_id)` RPC
+4. Reject → calls `reject_correction_request(request_id, reviewer_id)` RPC
+5. On approve: attendance_records UPSERTed with status='present'
+6. Triggers audit log + summary recalculation + real-time notification to student
 
-### 13.3 Defaulter Widget (`DefaulterWidget`)
-- Lists students with attendance < 75%
-- Shows name, roll number, percentage
-- Color-coded: red (< 50%), orange (50–75%)
+### 13.3 Database-Level Logic
+- `approve_correction_request()` is SECURITY DEFINER
+- Date-based: looks up session for that date, UPSERTs (student_id, attendance_date)
+- Session-based (legacy): inserts with ON CONFLICT DO NOTHING
 
-### 13.4 Risk Prediction (`RiskPrediction`)
-- Shows current attendance percentage in large text
-- Pre-computed predictions: "If absent for 1/2/3/5 more classes → X%"
-- Highlighted in red if prediction drops below 75% (at risk)
-- Interactive slider: choose 1–20 extra absences and see resulting %
-- Visual indicator: green TrendingUp icon if safe, red TrendingDown if at risk
-- Integrated into StudentDashboard below the stat cards
+## 14. Reports & Export
 
-## 14. Notifications System
+### 14.1 Reports Page
+- **Date range presets**: Daily, Weekly (Mon-Sun), Monthly, Yearly, Custom Range
+- **Search**: By student name or roll number (client-side filter)
+- **Student filter**: Dropdown of all students
+- **Sortable columns**: Student, Date, Status, Session, Time (click to toggle asc/desc)
+- **Table**: Student name, roll number, date, status badge, session code, timestamp
 
-### 14.1 Architecture
-Notifications use two channels:
-1. **Browser Notification API** — push notifications to the user's desktop/mobile (requires user permission)
-2. **Supabase Realtime** — Postgres change subscription detects correction status changes in real-time
+### 14.2 Export Formats
+| Format | Library | Notes |
+|--------|---------|-------|
+| CSV | Native Blob | `.csv` download |
+| Excel | xlsx (SheetJS) | `.xlsx` download |
+| PDF | jsPDF + jspdf-autotable | `.pdf` download |
 
-### 14.2 Notification Types
+All exports use the currently filtered/sorted data.
 
-| Type | Trigger | Channel |
-|------|---------|---------|
-| Attendance Marked | `useMarkAttendance` mutation success | Browser Notification API |
-| Attendance Missed | `useMissedAttendanceCheck` detects expired sessions without record | Browser Notification API |
-| Correction Approved | Supabase Realtime detects UPDATE on correction_requests → status='approved' | Postgres Changes subscription |
-| Correction Rejected | Supabase Realtime detects UPDATE on correction_requests → status='rejected' | Postgres Changes subscription |
+### 14.3 Audit Logs (AuditLogTable)
+- Columns: Date & Time, Student, Roll No, Session, Status, Device, Browser, IP, GPS
+- Auto-populated via `log_attendance_audit` trigger on INSERT to attendance_records
+- Role-filtered: students see own, professors see their sessions', admins see all
 
-### 14.3 Permission Flow
-1. `NotificationGate` component in App.tsx requests permission 5s after mount
-2. `useNotifications()` hook provides `requestPermission()`, `sendNotification()`, and typed helpers
-3. All notification calls silently fail if permission not granted
+### 14.4 Defaulters
+- Students with attendance < 75%
+- Listed in AdminDashboard and accessible via `useDefaulters` hook
+- Queries `attendance_summary` table (pre-calculated)
 
-### 14.4 Realtime Subscriptions
-- `useRealtimeCorrections(studentId)` subscribes to `attendance_correction_requests` UPDATES filtered by student_id
-- Opens a Supabase Realtime channel on mount, cleans up on unmount
-- Calls `notifyCorrectionApproved` / `notifyCorrectionRejected` based on new status
-
-### 14.5 Missed Attendance Detection
-- `useMissedAttendanceCheck(studentId)` runs 3s after mount
-- Finds today's expired sessions (is_active=false, end_time < now)
-- Checks if student has any attendance record for today
-- If no record found → fires `notifyAttendanceMissed` for each missed session
-
-## 15. Correction Request Flow
-
-### 14.1 Student Requests Correction
-1. From StudentDashboard → click "Request Correction" or click absent day in calendar
-2. `CorrectionRequestModal` opens with date pre-selected (from calendar click) or manual
-3. Student types reason (e.g., "I was present but couldn't mark", "Medical leave")
-4. Submit → inserts into `attendance_correction_requests`
-5. Auto-links to session if one exists for that date (session_id can be null)
-
-### 14.2 Professor Reviews Request
-1. From Reports → Corrections tab → sees pending requests
-2. Each row shows: student name, roll number, date, reason, created_at
-3. Click Approve → calls `approve_correction_request(request_id, reviewer_id)` RPC
-4. Click Reject → calls `reject_correction_request(request_id, reviewer_id)` RPC
-5. On approve: attendance_records UPSERTed with status='present' for that date
-6. Triggers audit log and summary recalculation
-
-### 14.3 Database-Level Logic
-- `approve_correction_request()` is SECURITY DEFINER (bypasses RLS)
-- If request has a `date` (non-null), finds any session for that date
-- UPSERTs attendance_records with ON CONFLICT (student_id, attendance_date) DO UPDATE
-- If request has a `session_id` (legacy), inserts with that session_id + ON CONFLICT DO NOTHING
-
-## 16. User Management
+## 15. User Management
 
 ### 15.1 Users Page (Admin Only)
-- Table showing all users: Name, Email, Role, Actions
-- **Student row**: "Promote to Professor" button
-- **Professor row**: Shows "Already Professor"
-- **Admin row**: Shows "System Admin" badge
+- Table: Name, Email, Role (badge), Actions
+- Student rows: "Promote to Professor" button → calls `supabase.from('profiles').update({ role: 'professor' })`
+- Professor rows: shows "—"
+- Admin rows: shows "System Admin" shield badge
 
 ### 15.2 Registration
-- **No role selector** — everyone is student by default
-- Professor accounts are created by promoting students
-- Admin accounts are created via direct SQL update
+- No role selector — everyone is student by default
+- Professor accounts created via admin promotion
+- Admin accounts via direct SQL UPDATE
+
+## 16. Enterprise SaaS UI Theme
+
+### 16.1 Design System (tailwind.config.js)
+- **Primary blue**: `#1657C5` with 50-900 scale
+- **Canvas background**: `#F5F6F8`
+- **Text**: `#111827` (primary), `#6B7280` (secondary), `#9CA3AF` (meta)
+- **Font**: Inter (300-800 weights)
+- **Border radius**: `16px` (default), `10px` (btn), `16px` (card)
+- **Shadows**: card, card-hover, dropdown, modal, sidebar, header, kpi-card, button
+
+### 16.2 Animations (index.css + tailwind)
+- `fade-in`, `fade-in-up`, `slide-in-left`, `slide-in-right`, `scale-in`
+- `progress-fill` (width animation), `count-up` (opacity + translate), `shimmer` (skeleton loading)
+- Custom scrollbar: 6px, rounded, gray
+
+### 16.3 UI Components
+| Component | Features |
+|-----------|----------|
+| **Button** | Variants: primary (blue fill), secondary, danger, ghost, outline; sizes: sm, md, lg; isLoading state with spinner; icon support |
+| **Card** | Card, CardHeader, CardTitle, CardContent, CardFooter; optional hover shadow; border support |
+| **Input** | Label, error message, date/time/text/number types, SearchInput variant with search icon |
+| **Select** | Label, error, options array, native select styled |
+| **Badge** | Variants: default (gray), success (green), warning (amber), danger (red), info (blue) |
+| **Modal** | Overlay with backdrop, close button, title, animated scale-in |
+| **Spinner** | SVG spinning circle; PageSpinner centered variant |
+| **KpiCard** | Metric card with icon, label, value, color accent bar, optional subtitle/trend/tooltip; framer-motion staggered entrance |
+| **ProgressRing** | SVG circular progress (Recharts pie) with center content area |
+| **Tabs** | TabsList + TabsTrigger + TabsContent with smooth transitions |
+| **NotificationBell** | Bell icon with unread count, dropdown notification panel, type-colored icons |
 
 ## 17. Frontend Structure
 
 ```
 src/
-├── main.tsx                       # Entry point
-├── App.tsx                        # Routes + Providers
-├── index.css                      # Tailwind imports
-├── vite-env.d.ts                  # Vite env types
+├── main.tsx                         # Entry point
+├── App.tsx                          # Routes + Providers + NotificationGate
+├── index.css                        # Tailwind imports + utility classes
+├── vite-env.d.ts
 ├── types/
-│   ├── index.ts                   # TypeScript interfaces (all entities)
-│   └── declarations.d.ts          # Module declarations (lucide-react, jspdf-autotable)
+│   ├── index.ts                     # All TypeScript interfaces (Profile, AttendanceSession, etc.)
+│   └── declarations.d.ts            # Module declarations
 ├── contexts/
-│   └── AuthContext.tsx            # Auth state + signIn/signUp/signOut
+│   ├── AuthContext.tsx               # Auth state, signIn/signUp/signOut, profile fetch
+│   └── NotificationContext.tsx       # Real-time notifications + localStorage + browser API
 ├── lib/
-│   ├── supabase.ts                # Supabase client init
-│   └── utils.ts                   # Helpers: Haversine, session code, formatting
+│   ├── supabase.ts                  # createClient with env vars
+│   └── utils.ts                     # Haversine, session code gen, formatting, cn(), date ranges
 ├── hooks/
-│   ├── useAuth.ts                 # Auth hook (re-exports from context)
-│   ├── useSessions.ts             # Session CRUD + toggle
-│   ├── useAttendance.ts           # Mark attendance + geofence + records queries
-│   ├── useReports.ts              # Dashboard stats + report data + defaulter list + student summary
-│   ├── useAuditLogs.ts            # Audit log queries
-│   ├── useCorrectionRequests.ts   # Correction requests CRUD + approve/reject RPC
-│   └── useAnalytics.ts            # Heatmap + trend queries
+│   ├── useSessions.ts               # useSessions, useSessionByCode, useCreateSession,
+│   │                                # useToggleSession (calls RPC on deactivate), useAutoExpireSessions
+│   ├── useAttendance.ts             # useAttendanceRecords, useMyAttendance, useTodayAttendance,
+│   │                                # checkGeofence, useMarkAttendance (calls Edge Function)
+│   ├── useReports.ts                # useDashboardStats (30s refetch), useReportData, useStudents,
+│   │                                # useStudentSummary, useDefaulters
+│   ├── useAuditLogs.ts              # useAuditLogs with filters
+│   ├── useCorrectionRequests.ts     # CRUD + usePendingCorrections + useApproveCorrection + useRejectCorrection
+│   ├── useAnalytics.ts              # useAttendanceHeatmap (12mo), useAttendanceTrend (configurable days)
+│   └── useNotifications.tsx         # useBrowserNotifications + NotificationGate component
 ├── components/
 │   ├── ui/
-│   │   ├── Button.tsx             # Variants: primary, secondary, danger, ghost, outline
-│   │   ├── Card.tsx               # Card + CardHeader + CardTitle + CardContent
-│   │   ├── Input.tsx              # Input with label + error
-│   │   ├── Select.tsx             # Select dropdown with label + error
-│   │   ├── Badge.tsx              # Variants: default, success, warning, danger, info
-│   │   ├── Modal.tsx              # Overlay modal with close
-│   │   └── Spinner.tsx           # Loading spinner + PageSpinner
+│   │   ├── Button.tsx               # Primary/secondary/danger/ghost/outline + sizes + loading
+│   │   ├── Card.tsx                 # Card + Header + Title + Content + Footer + hover
+│   │   ├── Input.tsx                # Input + SearchInput + label + error
+│   │   ├── Select.tsx               # Select + label + error + options
+│   │   ├── Badge.tsx                # default/success/warning/danger/info
+│   │   ├── Modal.tsx                # Overlay + backdrop + close + title
+│   │   ├── Spinner.tsx              # Spinner + PageSpinner
+│   │   ├── Tabs.tsx                 # TabsList + TabsTrigger + TabsContent
+│   │   ├── ProgressRing.tsx         # SVG circular progress indicator
+│   │   ├── KpiCard.tsx              # Animated metric card with color, icon, trend
+│   │   └── NotificationBell.tsx     # Bell + dropdown + unread count + type colors
 │   ├── layout/
-│   │   ├── AppLayout.tsx          # Sidebar + Header + Outlet
-│   │   ├── Sidebar.tsx            # Nav items filtered by role
-│   │   ├── Header.tsx             # Top bar with menu toggle
-│   │   └── ProtectedRoute.tsx     # Auth check + role filter
+│   │   ├── AppLayout.tsx            # Sidebar + Header + Outlet + BottomNav
+│   │   ├── Sidebar.tsx              # Collapsible desktop sidebar + mobile overlay + BottomNav
+│   │   ├── Header.tsx               # Sticky top bar with welcome + NotificationBell
+│   │   └── ProtectedRoute.tsx       # Auth check + optional role filter
 │   ├── auth/
-│   │   ├── LoginForm.tsx          # Email + password + show/hide
-│   │   └── RegisterForm.tsx       # Name (auto-UPPERCASE) + email + password + roll
+│   │   ├── LoginForm.tsx            # Email + password + show/hide toggle
+│   │   └── RegisterForm.tsx         # Name (auto-UPPERCASE) + email + password + roll
 │   ├── sessions/
-│   │   ├── CreateSessionModal.tsx # Simplified form (date + times only)
-│   │   ├── SessionCard.tsx        # Session display + copy link + toggle
-│   │   └── SessionList.tsx        # Grid of session cards
+│   │   ├── CreateSessionModal.tsx   # Zod-validated form (date, start, end)
+│   │   ├── SessionCard.tsx          # Code, date, time, link, copy, open, toggle
+│   │   └── SessionList.tsx          # Grid of SessionCards
 │   ├── attendance/
-│   │   ├── AttendanceValidator.tsx # Full validation chain UI
-│   │   ├── GeofenceChecker.tsx    # Browser GPS + distance display
-│   │   ├── AttendanceCalendar.tsx  # Reusable month grid + CalendarNavigator + DayStatus
-│   │   ├── ProfessorCalendarView.tsx # Professor calendar with per-student toggle
-│   │   ├── StudentCalendarView.tsx   # Student calendar with correction request integration
-│   │   └── CorrectionRequestModal.tsx # Form: date + reason -> submit
+│   │   ├── AttendanceValidator.tsx  # Full validation chain UI component
+│   │   ├── GeofenceChecker.tsx      # GPS location + distance + retry
+│   │   ├── CorrectionRequestModal.tsx # Date + reason form
+│   │   ├── AttendanceCalendar.tsx    # Reusable month grid
+│   │   ├── ProfessorCalendarView.tsx # Per-student present/absent toggle
+│   │   └── StudentCalendarView.tsx   # Status badges + correction request on absent click
 │   ├── analytics/
-│   │   ├── AttendanceHeatmap.tsx   # 12-month bar chart (Recharts)
-│   │   ├── AttendanceTrend.tsx     # 30-day bar chart (Recharts)
-│   │   └── DefaulterWidget.tsx     # Student list below 75%
-│   ├── reports/
-│   │   ├── ReportFilters.tsx      # Preset ranges + date pickers + student filter
-│   │   ├── AttendanceTable.tsx    # Data table from report results
-│   │   ├── ExportButtons.tsx      # CSV + Excel + PDF
-│   │   └── AuditLogTable.tsx      # Audit trail with device/browser/IP/GPS
-│   └── dashboard/
-│       ├── AdminDashboard.tsx     # 6 stat cards + defaulter + heatmap + trend
-│       ├── ProfessorDashboard.tsx # Stats + quick actions + calendar toggle
-│       └── StudentDashboard.tsx   # 4 stat cards + recent + heatmap + trend + correction + calendar toggle
+│   │   ├── ContributionHeatmap.tsx   # Full-year day grid (GitHub-style)
+│   │   ├── TrendChart.tsx           # Area chart (Recharts) with gradient
+│   │   ├── HealthGauge.tsx          # SVG semicircular arc gauge
+│   │   ├── StreakCard.tsx           # Current + longest streak
+│   │   ├── TodayStatus.tsx          # Today's present/absent/not-marked
+│   │   ├── SummaryCard.tsx          # 4-grid attendance stats
+│   │   ├── ActivityFeed.tsx         # Type-colored timeline
+│   │   ├── CorrectionWidget.tsx     # Pending/approved/rejected columns
+│   │   ├── AttendanceHeatmap.tsx    # 12-month bar chart (legacy)
+│   │   ├── AttendanceTrend.tsx      # 30-day bar chart (legacy)
+│   │   ├── DefaulterWidget.tsx      # Student list <75%
+│   │   └── RiskPrediction.tsx       # What-if calculator
+│   └── reports/
+│       ├── AttendanceTable.tsx      # Data table component
+│       ├── AuditLogTable.tsx        # Audit trail with device/browser/IP
+│       ├── ExportButtons.tsx        # CSV + Excel + PDF export functions
+│       └── ReportFilters.tsx        # Date range + student filter
 ├── pages/
-│   ├── Login.tsx                  # Login page layout
-│   ├── Register.tsx               # Register page layout
-│   ├── Dashboard.tsx              # Routes to role-specific dashboard
-│   ├── Sessions.tsx               # Session list + create button
-│   ├── Attendance.tsx             # Parses ?session= code → Validator
-│   ├── Reports.tsx                # 3 tabs: Reports | Audit Trail | Corrections
-│   ├── Settings.tsx               # Geofence configuration
-│   ├── Users.tsx                  # User table + promote button (admin)
-│   └── NotFound.tsx               # 404 page
+│   ├── Login.tsx                    # Login page layout
+│   ├── Register.tsx                 # Register page layout
+│   ├── Dashboard.tsx                # Routes to role-specific dashboard
+│   ├── Sessions.tsx                 # Session management + auto-expire on mount
+│   ├── Attendance.tsx               # Parses ?session= code → full attendance flow
+│   ├── Reports.tsx                  # 3 tabs: Reports | Audit Trail | Corrections
+│   ├── Settings.tsx                 # Geofence configuration (admin only)
+│   ├── Users.tsx                    # User table + promote (admin only)
+│   └── NotFound.tsx                 # 404 page
 └── public/
 ```
 
@@ -705,33 +718,37 @@ src/
 
 | Package | Purpose |
 |---------|---------|
-| react + react-dom | UI framework |
-| react-router-dom | Routing + protected routes |
-| @tanstack/react-query | Server state + caching + mutations |
+| react + react-dom | UI framework (18.x) |
+| react-router-dom | SPA routing + protected routes |
+| @tanstack/react-query | Server state, caching, mutations |
 | @supabase/supabase-js | Supabase client (auth + DB + functions) |
 | react-hook-form + @hookform/resolvers + zod | Form validation |
 | react-hot-toast | Toast notifications |
-| lucide-react | Icons |
-| tailwindcss + postcss + autoprefixer | CSS utility framework |
+| lucide-react | Icon set |
+| framer-motion | Staggered entrance animations, animated fills |
+| recharts | Area charts, progress rings |
 | xlsx (SheetJS) | Excel export |
 | jspdf + jspdf-autotable | PDF export |
-| recharts | Charts (heatmap + trend bars) |
 | date-fns | Date manipulation |
+| tailwindcss + postcss + autoprefixer | Utility CSS framework |
+| vite + @vitejs/plugin-react | Build tool + fast refresh |
+| typescript | Type safety |
 
 ## 19. Supabase Configuration
 
-### 18.1 Edge Function
+### 19.1 Edge Function
 - **Name**: `validate-attendance`
-- **Runtime**: Deno
-- **Environment**: SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (auto-injected)
-- **Deploy**: Copy code to Dashboard → Edge Functions → validate-attendance → Deploy
+- **Runtime**: Deno 1.x
+- **Location**: `supabase/functions/validate-attendance/index.ts`
+- **Deployment**: Copy source → Supabase Dashboard → Edge Functions → validate-attendance → Deploy
+- **Environment**: SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (auto-injected by Supabase)
 
-### 18.2 Auth Settings
-- **Providers**: Email + Password only (no OAuth)
-- **Security**: Disable signup from dashboard if only admin should create users
-- **Session**: Persistent (stay logged in across tab closes)
+### 19.2 Auth Settings
+- **Providers**: Email + Password only (no OAuth/social)
+- **Session**: Persistent (survives tab close)
+- **Security**: Disable public signup if admin-only user creation desired
 
-### 18.3 Initial Setup SQL
+### 19.3 Required Dashboard SQL
 ```sql
 -- Insert default geofence settings
 INSERT INTO college_settings (college_name, latitude, longitude, geofence_radius_meters)
@@ -740,11 +757,13 @@ ON CONFLICT DO NOTHING;
 
 -- Set first admin
 UPDATE profiles SET role = 'admin' WHERE email = 'your-email@example.com';
+
+-- Grant execute for auto-absent RPCs (migration 006)
+GRANT EXECUTE ON FUNCTION expire_session_and_mark_absent TO authenticated;
+GRANT EXECUTE ON FUNCTION expire_all_past_sessions TO authenticated;
 ```
 
-## 20. Testing Flow
-
-### 19.1 Complete Test Scenario
+## 20. Complete Test Scenario
 
 **Step 1: Setup**
 ```sql
@@ -752,198 +771,217 @@ UPDATE profiles SET role = 'admin' WHERE email = 'admin@test.edu';
 ```
 
 **Step 2: Admin promotes professor**
-1. Login as admin@test.edu
-2. Click **Users** in sidebar
-3. Find prof@test.edu → click "Promote to Professor"
+Login as admin → Users → find prof@test.edu → "Promote to Professor"
 
 **Step 3: Professor creates session**
-1. Login as prof@test.edu
-2. Click **Sessions** → **Create Session**
-3. Set Date = today, Start Time = 5 min ago, End Time = 1 hour later
-4. Click **Copy Link**
+Login as prof → Sessions → Create Session → set date=today, start=5min ago, end=+1hr → Copy Link
 
 **Step 4: Student marks attendance**
-1. Open incognito/private window
-2. Login as student@test.edu
-3. Paste the copied link in URL bar
-4. Allow location when prompted
-5. Click **Mark Attendance**
-6. See "Attendance Marked!" success
+Open incognito → login as student → paste link → allow location → Mark Attendance
 
 **Step 5: Verify**
-- Admin dashboard: Present Today = 1, Absent Today = rest
-- Student dashboard: Shows "Present Today", attendance % updated
-- Reports: Click Daily → see student name + roll number + status
+- Admin dashboard: Present Today incremented
+- Student dashboard: "Present" badge, percentage updated
+- Reports: record visible with student name + roll + status
 
 **Step 6: Check Audit Trail**
-- Reports → Audit Trail tab → see the record with device info, browser, IP
+Login as admin/prof → Reports → Audit Trail → see device, browser, IP, GPS
 
-**Step 7: Professor uses Calendar**
-- Dashboard → Show Calendar → click today → see student row → toggle status
+**Step 7: Test auto-absent**
+- Create session with past end_time → Sessions page auto-expires → absent records inserted
+- Or: professor deactivates session → RPC marks all unmarked students absent
 
-**Step 8: Student uses Calendar + Correction**
-- Dashboard → Show Calendar → see green for today
-- Click absent day (or click Request Correction) → submit reason
-- Professor sees in Reports → Corrections tab → Approve
+**Step 8: Test correction flow**
+- Student → Request Correction → submit reason
+- Professor → Dashboard → Corrections tab → Approve/Reject
+- Student gets real-time notification (in-app + browser)
 
-**Step 9: Export**
-- On Reports page, click CSV → opens CSV file
-- Click Excel → downloads .xlsx
-- Click PDF → downloads .pdf
+**Step 9: Test notifications**
+- Student marks attendance → browser notification "Attendance Marked ✓"
+- Professor creates session → students get "New Session" notification with link
+- Professor deactivates session → students get "Session Expired" notification
 
-**Step 10: Test Notifications**
-- Mark attendance → browser notification says "Attendance Marked"
-- After browser grants permission, wait 5s → NotificationGate triggers permission prompt
-- Professor approves/rejects correction → student gets real-time push notification
-- If student opens app after a session ended without marking → "Attendance Missed" notification
+**Step 10: Test exports**
+Reports → PDF/Excel/CSV → verify filtered data exports correctly
 
-**Step 11: Test Risk Prediction**
-- Student Dashboard → see Risk Prediction card below heatmap
-- Slide the "custom prediction" slider → percentage updates in real-time
-- Predictions for 1/2/3/5 absences shown with red highlight if below 75%
-
-**Step 12: Verify Correct Absent Calculation**
+**Step 11: Verify absent calculation**
 - Create 5 sessions over different days
-- Mark student present for 3 of them
-- Student dashboard should show: 60% (3/5), not 100% (3/3)
+- Mark student present for 3
+- Student dashboard should show 60% (3/5), not 100% (3/3)
 
-### 19.2 Notifications
-- Correction approve/reject shows success toast
-- Attendance mark shows success/failure toast
-- All mutations show toast feedback
+## 21. Migration Summary
 
-### 20.3 Error Handling
-- Duplicate attendance → "Attendance already marked for today"
-- Expired session → "Attendance Session Expired"
-- Outside geofence → "You are Xm away (max: Ym)"
-- Wrong session code → "Session Not Found"
-- No session on date for professor calendar → "No session exists for this date. Create a session first."
-- Vercel 404 on route refresh → Fixed by `vercel.json` rewrites to `/index.html`
+| Migration | Changes |
+|-----------|---------|
+| **001_schema.sql** | ENUMs, all tables, RLS, triggers, helper functions, initial geofence insert |
+| **002_remove_department_semester_title.sql** | Removes unused columns (title, department, semester) |
+| **003_attendance_features.sql** | Adds audit_logs, summary, corrections tables + RLS + RPCs |
+| **004_correction_date.sql** | Adds `date` column to corrections, makes session_id nullable, updates approve RPC |
+| **005_fix_absent_logic.sql** | Fixes recalc to count sessions (not records) as total_classes denominator |
+| **006_auto_absent.sql** | Adds expire_session_and_mark_absent + expire_all_past_sessions RPCs |
 
-## 21. Security Summary
+## 22. Security Summary
 
-| Security Feature | Implementation |
-|-----------------|----------------|
+| Feature | Implementation |
+|---------|---------------|
 | Authentication | Supabase Auth (email/password) |
-| Row Level Security | All 7 tables have RLS enabled |
-| Role-based access | Protected routes + RLS policies per role |
+| Row Level Security | All 7 tables RLS-enabled with role-based policies |
+| Role-based access | ProtectedRoute component + RLS per role |
 | One attendance per day | DB unique index + Edge Function check |
-| Geofence enforcement | Client GPS + backend Haversine |
-| Session expiry | Time window check (frontend) |
+| Geofence enforcement | Client GPS + backend Haversine (Edge Function) |
+| Session expiry | Time check in Edge Function + auto-absent RPC |
 | CSRF protection | Supabase JWT tokens |
 | XSS protection | React's built-in escaping |
 | SQL injection | Supabase parameterized queries |
 | No direct role change | Registration hardcoded to 'student' |
-| SECURITY DEFINER bypass | RLS helper functions avoid recursion |
-| Correction approval authority | Only professors/admins can approve via SECURITY DEFINER RPC |
-
-## 22. Database Migrations
-
-### 001_schema.sql
-Creates everything: ENUMs, tables (profiles, attendance_sessions, attendance_records, college_settings), triggers (handle_new_user, updated_at), all indexes, initial RLS policies, is_admin()/is_professor() helper functions.
-
-### 002_remove_department_semester_title.sql
-Removes unused columns: title, department, semester from attendance_sessions; department, semester from profiles.
-
-### 003_attendance_features.sql
-Creates additional tables: attendance_audit_logs (audit trail with auto-population trigger from user_agent), attendance_summary (pre-calculated percentages with auto-update trigger), attendance_correction_requests (student correction flow). Adds RLS policies for all three tables. Creates approve_correction_request() and reject_correction_request() SECURITY DEFINER functions.
-
-### 004_correction_date.sql
-Adds `date` column (DATE, nullable) to attendance_correction_requests. Makes session_id nullable. Updates approve_correction_request() to handle date-based corrections (looks up session for that date, UPSERTs attendance_records on conflict).
-
-### 005_fix_absent_logic.sql
-Fixes `recalc_attendance_summary()` to count `attendance_sessions` (total sessions held up to today) instead of `attendance_records` as the denominator for attendance percentage. Previously, only days with records were counted, inflating percentages (e.g., 8 present / 8 records = 100%, even if 10 sessions were held).
+| SECURITY DEFINER | Helper functions bypass RLS for admin operations |
+| Correction approval | Only professors/admins can approve via SECURITY DEFINER RPC |
 
 ## 23. Deployment
 
 ### 23.1 Vercel (Recommended)
-
-The project includes `vercel.json` for SPA routing support:
+`vercel.json` rewrites SPA routes to `/index.html`:
 ```json
-{
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
-}
+{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
 ```
-
-This fixes `404 NOT_FOUND` errors on Vercel caused by client-side routes. Without this, Vercel tries to find a static file matching the route and returns 404.
-
-**Deploy steps:**
+**Steps:**
 1. Push to GitHub
-2. Import repo in Vercel
-3. Framework preset: **Vite**
-4. Build command: `npm run build`
-5. Output directory: `dist`
-6. Set env variables in Vercel Dashboard:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
+2. Import in Vercel → Framework: Vite
+3. Build command: `npm run build`
+4. Output directory: `dist`
+5. Env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 
 ### 23.2 Commands Reference
-
 ```bash
-# Development
-npm run dev                    # Start Vite dev server
-
-# Build
-npm run build                  # TypeScript check (tsc -b) + Vite production build
-
-# Type check only
-npx tsc --noEmit              # TypeScript check without emitting
-
-# Install dependencies
-npm install                   # Install all packages from package.json
-
-# Deploy Edge Function
-# Via Dashboard: copy validate-attendance/index.ts → Supabase Edge Functions → Deploy
-
-# SQL Queries
-# Run in Supabase Dashboard → SQL Editor
-# Run migrations in order: 001 → 002 → 003 → 004 → 005
-
-# View all current policies
-SELECT * FROM pg_policies WHERE schemaname = 'public' ORDER BY tablename, policyname;
-
-# View all tables
-SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
+npm run dev              # Vite dev server
+npm run build            # tsc -b && vite build
+npx tsc --noEmit         # TypeScript check only
+npm install              # Install dependencies
 ```
 
-## 24. File Summary
+### 23.3 Critical Deployment Steps
+1. Apply all 6 migrations in order (001→006) via Supabase SQL Editor or `supabase migration up`
+2. Deploy Edge Function `validate-attendance` via Supabase Dashboard
+3. Verify auto-absent: create test session, let it expire, check absent records in Reports/Audit Log
+4. Enable Realtime in Supabase project settings for notification subscriptions
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| src/App.tsx | ~95 | Root component with routing + NotificationGate |
-| src/contexts/AuthContext.tsx | ~109 | Auth state management (signIn, signUp, signOut, refreshProfile) |
-| src/lib/supabase.ts | ~14 | Supabase client initialization |
-| src/lib/utils.ts | ~95 | Utility functions (Haversine, session code, formatting) |
-| src/hooks/useSessions.ts | ~90 | Session CRUD operations |
-| src/hooks/useAttendance.ts | ~150 | Attendance marking + geofence + browser notification on success |
-| src/hooks/useReports.ts | ~110 | Reports + dashboard stats + defaulter + student summary |
-| src/hooks/useAuditLogs.ts | ~35 | Audit log query hooks |
-| src/hooks/useCorrectionRequests.ts | ~140 | Correction requests CRUD + approve/reject RPC |
-| src/hooks/useAnalytics.ts | ~130 | Heatmap (12-month) + trend (30-day) — fixed to compare sessions vs present |
-| src/hooks/useNotifications.tsx | ~185 | Browser Notifications + NotificationGate + Realtime corrections + Missed check |
-| src/components/attendance/AttendanceCalendar.tsx | ~156 | Reusable month grid calendar with DayStatus, CalendarNavigator |
-| src/components/attendance/ProfessorCalendarView.tsx | ~170 | Professor calendar with per-student present/absent toggle |
-| src/components/attendance/StudentCalendarView.tsx | ~120 | Student calendar with correction request on absent click |
-| src/components/attendance/CorrectionRequestModal.tsx | ~50 | Modal form: date + reason + submit |
-| src/components/analytics/AttendanceHeatmap.tsx | ~80 | 12-month bar chart (Recharts) |
-| src/components/analytics/AttendanceTrend.tsx | ~80 | 30-day bar chart (Recharts) |
-| src/components/analytics/DefaulterWidget.tsx | ~60 | List of students below 75% |
-| src/components/analytics/RiskPrediction.tsx | ~80 | What-if attendance calculator with slider |
-| src/components/reports/AuditLogTable.tsx | ~80 | Audit trail table with device/browser/IP/GPS columns |
-| src/components/dashboard/ProfessorDashboard.tsx | ~80 | Stats + quick actions + calendar toggle |
-| src/components/dashboard/StudentDashboard.tsx | ~130 | Stats + recent + analytics + risk prediction + correction + calendar toggle |
-| supabase/migrations/001_schema.sql | ~280 | Full database schema |
-| supabase/migrations/002_remove_department_semester_title.sql | ~12 | Cleanup migration |
-| supabase/migrations/003_attendance_features.sql | ~247 | Audit + summary + corrections tables |
-| supabase/migrations/004_correction_date.sql | ~50 | Date column + nullable session_id for corrections |
-| supabase/migrations/005_fix_absent_logic.sql | ~30 | Fix recalc_attendance_summary to use sessions as denominator |
-| supabase/functions/validate-attendance/index.ts | ~247 | Backend validation function |
-| vercel.json | ~5 | SPA routing rewrites for Vercel |
+## 24. File Inventory (72 files)
 
-**Total frontend components: ~38 components** across ui/, layout/, auth/, sessions/, attendance/, analytics/, reports/, dashboard/ directories.
+```
+supabase/
+├── migrations/
+│   ├── 001_schema.sql                    (272 lines)
+│   ├── 002_remove_department_semester_title.sql (11 lines)
+│   ├── 003_attendance_features.sql       (247 lines)
+│   ├── 004_correction_date.sql           (58 lines)
+│   ├── 005_fix_absent_logic.sql          (34 lines)
+│   └── 006_auto_absent.sql               (82 lines)
+└── functions/
+    └── validate-attendance/
+        ├── index.ts                      (242 lines)
+        └── deno.json                     (5 lines)
 
-**Total hooks: 8** (useAuth, useSessions, useAttendance, useReports, useAuditLogs, useCorrectionRequests, useAnalytics, useNotifications)
+src/
+├── App.tsx                               (110 lines)
+├── index.css                             (200 lines)
+├── vite-env.d.ts
+├── types/
+│   ├── index.ts                          (121 lines)
+│   └── declarations.d.ts
+├── contexts/
+│   ├── AuthContext.tsx                   (109 lines)
+│   └── NotificationContext.tsx           (336 lines)
+├── lib/
+│   ├── supabase.ts                      (17 lines)
+│   └── utils.ts                         (100 lines)
+├── hooks/
+│   ├── useSessions.ts                   (110 lines)
+│   ├── useAttendance.ts                 (180 lines)
+│   ├── useReports.ts                    (138 lines)
+│   ├── useAuditLogs.ts                  (25 lines)
+│   ├── useCorrectionRequests.ts         (137 lines)
+│   ├── useAnalytics.ts                  (166 lines)
+│   └── useNotifications.tsx             (46 lines)
+├── pages/
+│   ├── Login.tsx
+│   ├── Register.tsx
+│   ├── Dashboard.tsx
+│   ├── Sessions.tsx                     (45 lines)
+│   ├── Attendance.tsx                   (230 lines)
+│   ├── Reports.tsx                      (221 lines)
+│   ├── Settings.tsx                     (112 lines)
+│   ├── Users.tsx                        (148 lines)
+│   └── NotFound.tsx
+├── components/
+│   ├── ui/ (10 files)
+│   │   ├── Button.tsx
+│   │   ├── Card.tsx
+│   │   ├── Input.tsx
+│   │   ├── Select.tsx
+│   │   ├── Badge.tsx
+│   │   ├── Modal.tsx
+│   │   ├── Spinner.tsx
+│   │   ├── Tabs.tsx
+│   │   ├── ProgressRing.tsx
+│   │   ├── KpiCard.tsx
+│   │   └── NotificationBell.tsx         (120 lines)
+│   ├── layout/ (4 files)
+│   │   ├── AppLayout.tsx               (20 lines)
+│   │   ├── Sidebar.tsx                  (172 lines)
+│   │   ├── Header.tsx                   (21 lines)
+│   │   └── ProtectedRoute.tsx
+│   ├── auth/ (2 files)
+│   │   ├── LoginForm.tsx
+│   │   └── RegisterForm.tsx
+│   ├── sessions/ (3 files)
+│   │   ├── CreateSessionModal.tsx       (60 lines)
+│   │   ├── SessionCard.tsx              (86 lines)
+│   │   └── SessionList.tsx
+│   ├── attendance/ (6 files)
+│   │   ├── AttendanceValidator.tsx      (126 lines)
+│   │   ├── GeofenceChecker.tsx          (80 lines)
+│   │   ├── CorrectionRequestModal.tsx   (64 lines)
+│   │   ├── AttendanceCalendar.tsx
+│   │   ├── ProfessorCalendarView.tsx
+│   │   └── StudentCalendarView.tsx
+│   ├── analytics/ (12 files)
+│   │   ├── ContributionHeatmap.tsx      (125 lines)
+│   │   ├── TrendChart.tsx               (111 lines)
+│   │   ├── HealthGauge.tsx              (67 lines)
+│   │   ├── StreakCard.tsx               (82 lines)
+│   │   ├── TodayStatus.tsx              (47 lines)
+│   │   ├── SummaryCard.tsx              (64 lines)
+│   │   ├── ActivityFeed.tsx             (84 lines)
+│   │   ├── CorrectionWidget.tsx         (59 lines)
+│   │   ├── AttendanceHeatmap.tsx
+│   │   ├── AttendanceTrend.tsx
+│   │   ├── DefaulterWidget.tsx
+│   │   └── RiskPrediction.tsx
+│   └── reports/ (4 files)
+│       ├── AttendanceTable.tsx
+│       ├── AuditLogTable.tsx
+│       ├── ExportButtons.tsx
+│       └── ReportFilters.tsx
+└── dashboard/ (3 files)
+    ├── AdminDashboard.tsx              (122 lines)
+    ├── ProfessorDashboard.tsx           (149 lines)
+    └── StudentDashboard.tsx             (160 lines)
 
-**Total pages: 9** (Login, Register, Dashboard, Sessions, Attendance, Reports, Settings, Users, NotFound)
+Config files:
+├── tailwind.config.js                   (93 lines)
+├── vite.config.ts                       (12 lines)
+├── tsconfig.json                        (27 lines)
+├── tsconfig.node.json
+├── postcss.config.js
+├── package.json                         (45 lines)
+└── vercel.json
+```
+
+**Totals:**
+- **72 files** across all directories
+- **44 React components** (11 UI, 4 layout, 2 auth, 3 sessions, 6 attendance, 12 analytics, 4 reports, 3 dashboards)
+- **7 custom hooks** (useSessions, useAttendance, useReports, useAuditLogs, useCorrectionRequests, useAnalytics, useBrowserNotifications)
+- **9 pages** (Login, Register, Dashboard, Sessions, Attendance, Reports, Settings, Users, NotFound)
+- **2 React contexts** (Auth, Notifications)
+- **6 SQL migrations** + **1 Edge Function**
+- **1 Edge Function** (validate-attendance, 242 lines)
