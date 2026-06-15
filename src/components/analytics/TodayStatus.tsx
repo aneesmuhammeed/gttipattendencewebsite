@@ -11,16 +11,16 @@ export function TodayStatus() {
   const { profile } = useAuth();
   const { data: todayRecord, isLoading } = useTodayAttendance(profile?.id);
 
-  const { data: todaySessions } = useQuery({
-    queryKey: ['today-sessions-check'],
+  const { data: endedToday } = useQuery({
+    queryKey: ['today-schedule-ended'],
     queryFn: async () => {
       const today = new Date().toISOString().split('T')[0];
       const now = new Date();
       const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       const { data } = await supabase
-        .from('attendance_sessions')
+        .from('attendance_schedule')
         .select('id, end_time')
-        .eq('attendance_date', today)
+        .eq('date', today)
         .lte('end_time', currentTime);
       return (data || []).length > 0;
     },
@@ -32,7 +32,7 @@ export function TodayStatus() {
       if (todayRecord.status === 'present') return { label: 'Present', icon: CheckCircle, color: 'text-success', bg: 'bg-green-50', badge: 'success' as const };
       return { label: 'Absent', icon: XCircle, color: 'text-danger', bg: 'bg-red-50', badge: 'danger' as const };
     }
-    if (todaySessions) return { label: 'Absent', icon: XCircle, color: 'text-danger', bg: 'bg-red-50', badge: 'danger' as const };
+    if (endedToday) return { label: 'Absent', icon: XCircle, color: 'text-danger', bg: 'bg-red-50', badge: 'danger' as const };
     return { label: 'Not Marked Yet', icon: Clock, color: 'text-warning', bg: 'bg-amber-50', badge: 'warning' as const };
   };
 

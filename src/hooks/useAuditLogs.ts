@@ -9,7 +9,7 @@ export function useAuditLogs(filters?: ReportFilters) {
     queryFn: async () => {
       let query = supabase
         .from('attendance_audit_logs')
-        .select('*, profiles!attendance_audit_logs_student_id_fkey(full_name, roll_number), attendance_sessions!attendance_audit_logs_session_id_fkey(session_code)')
+        .select('*, profiles!attendance_audit_logs_student_id_fkey(full_name, roll_number)')
         .order('marked_at', { ascending: false })
         .limit(500);
 

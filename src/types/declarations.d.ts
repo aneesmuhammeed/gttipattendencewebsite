@@ -64,6 +64,7 @@ declare module 'lucide-react' {
   export const Smartphone: FC<SVGProps<SVGSVGElement>>;
   export const Target: FC<SVGProps<SVGSVGElement>>;
   export const Timer: FC<SVGProps<SVGSVGElement>>;
+  export const Trash2: FC<SVGProps<SVGSVGElement>>;
   export const TrendingUp: FC<SVGProps<SVGSVGElement>>;
   export const TrendingDown: FC<SVGProps<SVGSVGElement>>;
   export const Upload: FC<SVGProps<SVGSVGElement>>;

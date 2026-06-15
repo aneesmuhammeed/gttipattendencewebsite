@@ -3,16 +3,14 @@ import { supabase } from '@/lib/supabase';
 import type { AttendanceCorrectionRequest } from '@/types';
 import toast from 'react-hot-toast';
 
-export function useCorrectionRequests(sessionId?: string) {
+export function useCorrectionRequests() {
   return useQuery({
-    queryKey: ['correction-requests', sessionId],
+    queryKey: ['correction-requests'],
     queryFn: async () => {
       let query = supabase
         .from('attendance_correction_requests')
-        .select('*, profiles!attendance_correction_requests_student_id_fkey(full_name, roll_number), attendance_sessions!attendance_correction_requests_session_id_fkey(session_code, attendance_date, start_time, end_time)')
+        .select('*, profiles!attendance_correction_requests_student_id_fkey(full_name, roll_number)')
         .order('created_at', { ascending: false });
-
-      if (sessionId) query = query.eq('session_id', sessionId);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -27,7 +25,7 @@ export function useMyCorrectionRequests(studentId?: string) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('attendance_correction_requests')
-        .select('*, attendance_sessions!attendance_correction_requests_session_id_fkey(session_code, attendance_date, start_time, end_time)')
+        .select('*')
         .eq('student_id', studentId!)
         .order('created_at', { ascending: false });
 
@@ -44,7 +42,7 @@ export function usePendingCorrections() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('attendance_correction_requests')
-        .select('*, profiles!attendance_correction_requests_student_id_fkey(full_name, roll_number), attendance_sessions!attendance_correction_requests_session_id_fkey(session_code, attendance_date, start_time, end_time)')
+        .select('*, profiles!attendance_correction_requests_student_id_fkey(full_name, roll_number)')
         .eq('status', 'pending')
         .order('created_at', { ascending: false });
 
@@ -62,7 +60,6 @@ export function useCreateCorrectionRequest() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Verify student has an absent record for this date
       const { data: record } = await supabase
         .from('attendance_records')
         .select('status')
@@ -73,20 +70,10 @@ export function useCreateCorrectionRequest() {
       if (!record) throw new Error('You can only request a correction for a date where you were marked absent');
       if (record.status === 'present') throw new Error('You are already marked present for this date');
 
-      // Find a session for this date (optional)
-      const { data: sessions } = await supabase
-        .from('attendance_sessions')
-        .select('id')
-        .eq('attendance_date', date)
-        .limit(1);
-
-      const sessionId = sessions?.[0]?.id || null;
-
       const { error } = await supabase
         .from('attendance_correction_requests')
         .insert({
           student_id: user.id,
-          session_id: sessionId,
           date,
           reason,
         });

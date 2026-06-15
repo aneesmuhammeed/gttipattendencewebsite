@@ -15,9 +15,9 @@ export function useAttendanceHeatmap(studentId?: string) {
         // Student-level: compare sessions vs present records
         const [sessionsResult, recordsResult] = await Promise.all([
           supabase
-            .from('attendance_sessions')
-            .select('attendance_date')
-            .gte('attendance_date', startDate),
+            .from('attendance_schedule')
+            .select('date')
+            .gte('date', startDate),
           supabase
             .from('attendance_records')
             .select('attendance_date, status')
@@ -34,7 +34,7 @@ export function useAttendanceHeatmap(studentId?: string) {
         }
 
         for (const s of sessionsResult.data || []) {
-          const month = s.attendance_date.slice(0, 7);
+          const month = s.date.slice(0, 7);
           if (monthStats[month]) monthStats[month].total++;
         }
 
@@ -96,9 +96,9 @@ export function useAttendanceTrend(studentId?: string, days: number = 30) {
         // Student-level: compare sessions vs present records
         const [sessionsResult, recordsResult] = await Promise.all([
           supabase
-            .from('attendance_sessions')
-            .select('attendance_date')
-            .gte('attendance_date', startStr),
+            .from('attendance_schedule')
+            .select('date')
+            .gte('date', startStr),
           supabase
             .from('attendance_records')
             .select('attendance_date, status')
@@ -115,7 +115,7 @@ export function useAttendanceTrend(studentId?: string, days: number = 30) {
         }
 
         for (const s of sessionsResult.data || []) {
-          if (dailyStats[s.attendance_date]) dailyStats[s.attendance_date].total++;
+          if (dailyStats[s.date]) dailyStats[s.date].total++;
         }
 
         for (const r of recordsResult.data || []) {

@@ -1,69 +1,43 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useSessionByCode, useAutoExpireSessions } from '@/hooks/useSessions';
+import { useAutoExpire } from '@/hooks/useSchedule';
 import { useTodayAttendance, useMarkAttendance } from '@/hooks/useAttendance';
 import { checkGeofence } from '@/hooks/useAttendance';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/Card';
+import { useHolidays } from '@/hooks/useHolidays';
+import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { Spinner } from '@/components/ui/Spinner';
-import { Input } from '@/components/ui/Input';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
-import type { GeofenceResult, AttendanceSession } from '@/types';
+import { motion } from 'framer-motion';
+import type { GeofenceResult } from '@/types';
 import {
-  MapPin,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Clock,
-  Loader2,
-  Target,
-  Fingerprint,
-  ClipboardList,
-  Search,
-  ChevronRight,
+  CheckCircle, XCircle, AlertTriangle, Clock, Loader2, Target, Fingerprint,
 } from 'lucide-react';
-
-function isSessionExpired(session: { attendance_date: string; end_time: string }): boolean {
-  const now = new Date();
-  const sessionDate = new Date(session.attendance_date + 'T' + session.end_time);
-  return now > sessionDate;
-}
 
 export default function Attendance() {
   const { profile } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const sessionCode = searchParams.get('session');
-  const autoExpire = useAutoExpireSessions();
-  const [manualCode, setManualCode] = useState('');
+  const autoExpire = useAutoExpire();
+  const expiredRef = useRef(false);
 
-  const { data: session, isLoading: sessionLoading, error: sessionError } = useSessionByCode(sessionCode);
   const { data: todayRecord, isLoading: todayLoading } = useTodayAttendance(profile?.id);
+  const { data: holidays } = useHolidays();
   const markAttendance = useMarkAttendance();
-
-  const { data: activeSessions, isLoading: activeLoading } = useQuery({
-    queryKey: ['active-sessions-today'],
-    queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
-      const { data, error } = await supabase
-        .from('attendance_sessions')
-        .select('id, session_code, start_time, end_time, attendance_date, is_active, created_by')
-        .eq('attendance_date', today)
-        .eq('is_active', true)
-        .order('start_time', { ascending: true });
-      if (error) throw error;
-      return data as AttendanceSession[];
-    },
-  });
 
   const [geofence, setGeofence] = useState<GeofenceResult | null>(null);
   const [geoLoading, setGeoLoading] = useState(true);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [marked, setMarked] = useState(false);
   const [marking, setMarking] = useState(false);
+  const [markError, setMarkError] = useState<string | null>(null);
+
+  const today = new Date().toISOString().split('T')[0];
+  const isHoliday = holidays?.some((h) => h.date === today) ?? false;
+
+  useEffect(() => {
+    if (expiredRef.current) return;
+    expiredRef.current = true;
+    autoExpire.mutate();
+  }, []);
 
   useEffect(() => {
     checkGeofence()
@@ -72,257 +46,135 @@ export default function Attendance() {
       .finally(() => setGeoLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (session && session.is_active && isSessionExpired(session)) {
-      autoExpire.mutate();
-    }
-  }, [session]);
+  const alreadyMarked = todayRecord || marked;
 
   const handleMarkAttendance = async () => {
-    if (!geofence || !sessionCode || marking) return;
+    if (!geofence || marking) return;
     setMarking(true);
+    setMarkError(null);
     try {
       await markAttendance.mutateAsync({
-        session_code: sessionCode,
         latitude: geofence.collegeLat || 0,
         longitude: geofence.collegeLng || 0,
       });
       setMarked(true);
-    } catch {
+    } catch (err: any) {
+      setMarkError(err.message);
     } finally {
       setMarking(false);
     }
   };
 
-  const handleSelectSession = (code: string) => {
-    setSearchParams({ session: code });
-  };
-
-  const alreadyMarked = todayRecord || marked;
-  const expired = session && !session.is_active && isSessionExpired(session);
-
-  // Show session picker when no session code is in URL
-  if (!sessionCode) {
-    return (
-      <div className="page-container">
-        <div className="max-w-xl mx-auto space-y-6 animate-fade-in-up">
-          <div className="text-center mb-2">
-            <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-primary/20">
-              <Fingerprint className="w-7 h-7 text-white" />
-            </div>
-            <h1 className="text-xl font-bold text-[#111827]">Mark Attendance</h1>
-            <p className="text-sm text-[#6B7280] mt-1">Select an active session or enter a code</p>
-          </div>
-
-          {/* Manual code entry */}
-          <Card hover={false}>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Search className="w-5 h-5 text-primary" />
-                <span className="text-sm font-semibold text-[#111827]">Enter Session Code</span>
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="e.g. att-20260614-193000"
-                  value={manualCode}
-                  onChange={(e) => setManualCode(e.target.value)}
-                />
-                <Button
-                  onClick={() => {
-                    if (manualCode.trim()) handleSelectSession(manualCode.trim());
-                  }}
-                  disabled={!manualCode.trim()}
-                  className="shrink-0"
-                >
-                  Go
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Active sessions list */}
-          <Card hover={false}>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <ClipboardList className="w-4 h-4 text-primary" />
-                Active Sessions Today
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {activeLoading ? (
-                <div className="space-y-2">
-                  {[1, 2].map((i) => <div key={i} className="skeleton h-14 w-full" />)}
-                </div>
-              ) : !activeSessions?.length ? (
-                <div className="text-center py-6">
-                  <Clock className="w-10 h-10 text-[#D1D5DB] mx-auto mb-2" />
-                  <p className="text-sm text-[#6B7280]">No active sessions today</p>
-                  <p className="text-xs text-[#9CA3AF] mt-1">Ask your professor to create a session</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {activeSessions.map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => handleSelectSession(s.session_code)}
-                      className="w-full flex items-center justify-between p-3 rounded-btn border border-gray-100 hover:border-primary hover:bg-primary-50/30 transition-all text-left"
-                    >
-                      <div>
-                        <code className="text-sm font-mono text-primary font-medium">{s.session_code}</code>
-                        <p className="text-xs text-[#6B7280] mt-0.5">
-                          {s.start_time?.slice(0, 5)} — {s.end_time?.slice(0, 5)}
-                        </p>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-[#9CA3AF]" />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="text-center">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="text-sm text-[#6B7280] hover:text-primary transition-colors"
-            >
-              Back to Dashboard
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-4 animate-fade-in-up">
-        <div className="text-center mb-6">
+      <div className="w-full max-w-sm space-y-4 animate-fade-in-up">
+        <motion.div
+          className="text-center"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
           <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-primary/20">
             <Fingerprint className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-xl font-bold text-[#111827]">Mark Attendance</h1>
-          <p className="text-sm text-[#6B7280] mt-1">Verify your location to mark presence</p>
-        </div>
+          <p className="text-sm text-[#6B7280] mt-1">
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </p>
+        </motion.div>
 
-        <Card hover={false}>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-[#6B7280]">Session</span>
-              {sessionLoading ? (
-                <Spinner size="sm" />
-              ) : session ? (
-                <Badge variant="success">{session.session_code}</Badge>
-              ) : sessionError ? (
-                <Badge variant="danger">Invalid</Badge>
-              ) : (
-                <Badge variant="default">No Session</Badge>
-              )}
-            </div>
-            {session && (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#6B7280]">Date</span>
-                  <span className="text-sm font-medium text-[#111827]">
-                    {new Date(session.attendance_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#6B7280]">Time</span>
-                  <span className="text-sm font-medium text-[#111827]">
-                    {session.start_time?.slice(0, 5)} — {session.end_time?.slice(0, 5)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#6B7280]">Status</span>
-                  <Badge variant={session.is_active ? 'success' : 'danger'}>
-                    {session.is_active ? 'Active' : 'Expired'}
-                  </Badge>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card hover={false}>
-          <CardContent className="space-y-3">
-            <div className="flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-primary" />
-              <span className="text-sm font-semibold text-[#111827]">Location Verification</span>
-            </div>
-
-            {geoLoading ? (
-              <div className="flex items-center gap-2 py-3">
-                <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                <span className="text-sm text-[#6B7280]">Detecting your location...</span>
-              </div>
-            ) : geoError ? (
-              <div className="flex items-start gap-2 p-3 rounded-btn bg-red-50">
-                <AlertTriangle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-danger">Location Error</p>
-                  <p className="text-xs text-red-600 mt-0.5">{geoError}</p>
-                </div>
-              </div>
-            ) : geofence?.withinGeofence ? (
-              <div className="flex items-center gap-2 p-3 rounded-btn bg-green-50">
-                <CheckCircle className="w-4 h-4 text-success" />
-                <div>
-                  <p className="text-sm font-medium text-success">Within Campus</p>
-                  <p className="text-xs text-green-600">{geofence.distance}m from center</p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-start gap-2 p-3 rounded-btn bg-red-50">
-                <XCircle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-danger">Outside Campus</p>
-                  <p className="text-xs text-red-600">{geofence?.distance}m away (max: {geofence?.maxDistance}m)</p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {session?.is_active && !alreadyMarked && !expired ? (
-          <Button
-            size="lg"
-            className="w-full h-14 text-base"
-            onClick={handleMarkAttendance}
-            disabled={!geofence?.withinGeofence || marking || !sessionCode}
-            isLoading={marking}
-          >
-            {marking ? 'Marking...' : <><Target className="w-5 h-5" /> Mark Attendance</>}
-          </Button>
+        {isHoliday ? (
+          <Card>
+            <CardContent className="text-center py-8">
+              <Clock className="w-12 h-12 text-amber-500 mx-auto mb-3" />
+              <p className="text-lg font-semibold text-[#111827]">No Class Today</p>
+              <p className="text-sm text-[#6B7280] mt-1">Today is marked as a holiday</p>
+            </CardContent>
+          </Card>
         ) : alreadyMarked ? (
-          <Card hover={false} className="border-2 border-green-200">
-            <CardContent className="text-center py-6">
-              <CheckCircle className="w-12 h-12 text-success mx-auto mb-2" />
-              <p className="text-lg font-semibold text-success">Attendance Marked</p>
-              <p className="text-sm text-[#6B7280] mt-1">You have been marked present for this session</p>
-            </CardContent>
-          </Card>
-        ) : (expired || (session && !session.is_active)) ? (
-          <Card hover={false} className="border-2 border-amber-200">
-            <CardContent className="text-center py-6">
-              <Clock className="w-12 h-12 text-warning mx-auto mb-2" />
-              <p className="text-lg font-semibold text-warning">Session Expired</p>
-              <p className="text-sm text-[#6B7280] mt-2">
-                This session ended at {session?.end_time?.slice(0, 5)}. If you were present, submit a correction request.
-              </p>
-              <Button variant="outline" size="sm" className="mt-3" onClick={() => navigate('/dashboard')}>
-                Go to Dashboard
-              </Button>
-            </CardContent>
-          </Card>
-        ) : null}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+          >
+            <Card className="border-2 border-green-200">
+              <CardContent className="text-center py-8">
+                <CheckCircle className="w-16 h-16 text-success mx-auto mb-3" />
+                <p className="text-lg font-semibold text-success">Present</p>
+                <p className="text-sm text-[#6B7280] mt-1">You have marked attendance for today</p>
+                <Button variant="outline" size="sm" className="mt-4" onClick={() => navigate('/dashboard')}>
+                  Go to Dashboard
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ) : (
+          <>
+            <Card>
+              <CardContent className="space-y-4 py-5">
+                <div className="flex items-center gap-2">
+                  <Target className="w-5 h-5 text-primary" />
+                  <span className="text-sm font-semibold text-[#111827]">Location Verification</span>
+                </div>
+
+                {geoLoading ? (
+                  <div className="flex items-center gap-2 py-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                    <span className="text-sm text-[#6B7280]">Detecting location...</span>
+                  </div>
+                ) : geoError ? (
+                  <div className="flex items-start gap-2 p-3 rounded-btn bg-red-50">
+                    <AlertTriangle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-danger">Location Error</p>
+                      <p className="text-xs text-red-600 mt-0.5">{geoError}</p>
+                    </div>
+                  </div>
+                ) : geofence?.withinGeofence ? (
+                  <div className="flex items-center gap-2 p-3 rounded-btn bg-green-50">
+                    <CheckCircle className="w-4 h-4 text-success" />
+                    <div>
+                      <p className="text-sm font-medium text-success">Within Campus</p>
+                      <p className="text-xs text-green-600">{geofence.distance}m from center</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2 p-3 rounded-btn bg-red-50">
+                    <XCircle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-danger">Outside Campus</p>
+                      <p className="text-xs text-red-600">
+                        {geofence?.distance}m away (max: {geofence?.maxDistance}m)
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {markError && (
+                  <div className="flex items-start gap-2 p-3 rounded-btn bg-red-50">
+                    <AlertTriangle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
+                    <p className="text-sm text-red-600">{markError}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Button
+              size="lg"
+              className="w-full h-14 text-base"
+              onClick={handleMarkAttendance}
+              disabled={!geofence?.withinGeofence || marking}
+              isLoading={marking}
+            >
+              {marking ? 'Marking...' : <><Target className="w-5 h-5" /> Mark Attendance</>}
+            </Button>
+          </>
+        )}
 
         <div className="text-center">
           <button
-            onClick={() => setSearchParams({})}
+            onClick={() => navigate('/dashboard')}
             className="text-sm text-[#6B7280] hover:text-primary transition-colors"
           >
-            Select a different session
+            Back to Dashboard
           </button>
         </div>
       </div>

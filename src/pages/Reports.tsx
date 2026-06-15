@@ -177,9 +177,6 @@ export default function Reports() {
                     <th className="text-left py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider cursor-pointer hover:text-[#111827]" onClick={() => toggleSort('status')}>
                       Status <SortIcon field="status" />
                     </th>
-                    <th className="text-left py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider">
-                      Session
-                    </th>
                     <th className="text-right py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider cursor-pointer hover:text-[#111827]" onClick={() => toggleSort('marked_at')}>
                       Time <SortIcon field="marked_at" />
                     </th>
@@ -201,9 +198,6 @@ export default function Reports() {
                         <Badge variant={record.status === 'present' ? 'success' : 'danger'}>
                           {record.status}
                         </Badge>
-                      </td>
-                      <td className="py-3 px-3 text-[#6B7280] font-mono text-xs">
-                        {record.attendance_sessions?.session_code || '-'}
                       </td>
                       <td className="py-3 px-3 text-right text-[#6B7280] text-xs">
                         {record.marked_at ? new Date(record.marked_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-'}

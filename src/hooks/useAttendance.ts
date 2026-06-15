@@ -4,39 +4,18 @@ import type { AttendanceRecord, GeofenceResult } from '@/types';
 import { calculateDistance } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
-export function useAttendanceRecords(sessionId?: string) {
-  return useQuery({
-    queryKey: ['attendance-records', sessionId],
-    queryFn: async () => {
-      let query = supabase
-        .from('attendance_records')
-        .select('*, profiles!attendance_records_student_id_fkey(full_name, roll_number)')
-        .order('marked_at', { ascending: false });
-
-      if (sessionId) {
-        query = query.eq('session_id', sessionId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as (AttendanceRecord & { profiles: { full_name: string; roll_number: string } })[];
-    },
-    enabled: !!sessionId,
-  });
-}
-
 export function useMyAttendance(studentId?: string) {
   return useQuery({
     queryKey: ['my-attendance', studentId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('attendance_records')
-        .select('*, attendance_sessions!inner(session_code)')
+        .select('*')
         .eq('student_id', studentId!)
         .order('attendance_date', { ascending: false });
 
       if (error) throw error;
-      return data as (AttendanceRecord & { attendance_sessions: { session_code: string } })[];
+      return data as AttendanceRecord[];
     },
     enabled: !!studentId,
   });
@@ -110,7 +89,6 @@ export async function checkGeofence(): Promise<GeofenceResult> {
         },
         (err) => {
           if (highAccuracy && err.code === 3) {
-            // Timeout with high accuracy — retry without
             attempt(false);
           } else {
             const messages: Record<number, string> = {
@@ -138,27 +116,32 @@ export function useMarkAttendance() {
 
   return useMutation({
     mutationFn: async ({
-      session_code,
       latitude,
       longitude,
     }: {
-      session_code: string;
       latitude: number;
       longitude: number;
     }) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
-
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not found');
 
-      const { data, error } = await supabase.functions.invoke('validate-attendance', {
-        body: { session_code, latitude, longitude },
+      const { data, error } = await supabase.rpc('mark_today_attendance', {
+        p_student_id: user.id,
+        p_latitude: latitude,
+        p_longitude: longitude,
       });
 
-      if (error) {
-        const errorBody = await error.context?.json() || { error: error.message };
-        throw new Error(errorBody.error || error.message);
+      if (error) throw error;
+
+      const messages: Record<string, string> = {
+        HOLIDAY: 'Today is a holiday — no attendance required',
+        ALREADY_MARKED: 'You have already marked attendance today',
+        OUTSIDE_GEOFENCE: 'You are outside the campus geofence',
+        SUCCESS: 'Attendance marked successfully!',
+      };
+
+      if (data !== 'SUCCESS') {
+        throw new Error(messages[data as string] || 'Failed to mark attendance');
       }
 
       return data;

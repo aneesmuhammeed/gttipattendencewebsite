@@ -11,20 +11,8 @@ export interface Profile {
   updated_at: string;
 }
 
-export interface AttendanceSession {
-  id: string;
-  session_code: string;
-  attendance_date: string;
-  start_time: string;
-  end_time: string;
-  is_active: boolean;
-  created_by: string;
-  created_at: string;
-}
-
 export interface AttendanceRecord {
   id: string;
-  session_id: string;
   student_id: string;
   marked_at: string;
   latitude: number;
@@ -50,7 +38,7 @@ export interface DashboardStats {
   present_today: number;
   absent_today: number;
   attendance_percentage: number;
-  active_sessions: number;
+  scheduled_today: number;
   defaulters_count: number;
 }
 
@@ -58,7 +46,6 @@ export interface AttendanceAuditLog {
   id: string;
   attendance_record_id: string | null;
   student_id: string;
-  session_id: string;
   marked_at: string;
   ip_address: string | null;
   latitude: number | null;
@@ -68,7 +55,6 @@ export interface AttendanceAuditLog {
   user_agent: string | null;
   action_type: string;
   profiles?: { full_name: string; roll_number: string };
-  attendance_sessions?: { session_code: string };
 }
 
 export interface AttendanceCorrectionRequest {
@@ -82,7 +68,6 @@ export interface AttendanceCorrectionRequest {
   reviewed_at: string | null;
   created_at: string;
   profiles?: { full_name: string; roll_number: string };
-  attendance_sessions?: { session_code: string; attendance_date: string; start_time: string; end_time: string };
 }
 
 export interface MonthlyHeatmap {

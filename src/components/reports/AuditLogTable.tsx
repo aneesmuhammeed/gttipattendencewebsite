@@ -12,8 +12,7 @@ export function AuditLogTable() {
   const filtered = (logs || []).filter((log: any) =>
     !search ||
     log.profiles?.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-    log.profiles?.roll_number?.toLowerCase().includes(search.toLowerCase()) ||
-    log.attendance_sessions?.session_code?.toLowerCase().includes(search.toLowerCase())
+    log.profiles?.roll_number?.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -47,7 +46,6 @@ export function AuditLogTable() {
               <thead>
                 <tr className="border-b border-gray-100">
                   <th className="text-left py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Student</th>
-                  <th className="text-left py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Session</th>
                   <th className="text-left py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Device</th>
                   <th className="text-left py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Browser</th>
                   <th className="text-left py-3 px-3 text-xs font-semibold text-[#6B7280] uppercase tracking-wider">IP Address</th>
@@ -64,7 +62,6 @@ export function AuditLogTable() {
                         <p className="text-[10px] text-[#9CA3AF]">{log.profiles?.roll_number}</p>
                       </div>
                     </td>
-                    <td className="py-3 px-3 text-xs font-mono text-[#6B7280]">{log.attendance_sessions?.session_code || '-'}</td>
                     <td className="py-3 px-3">
                       <span className="flex items-center gap-1 text-xs text-[#6B7280]">
                         {log.device_info?.toLowerCase().includes('mobile') || log.device_info?.toLowerCase().includes('android') || log.device_info?.toLowerCase().includes('iphone')

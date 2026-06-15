@@ -1,24 +1,37 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useStudentSummary } from '@/hooks/useReports';
 import { useMyCorrectionRequests } from '@/hooks/useCorrectionRequests';
+import { useAutoExpire } from '@/hooks/useSchedule';
 import { Card, CardContent } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { Button } from '@/components/ui/Button';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { TodayStatus } from '@/components/analytics/TodayStatus';
 import { CorrectionWidget } from '@/components/analytics/CorrectionWidget';
+import { StudentCalendarView } from '@/components/attendance/StudentCalendarView';
 import { motion } from 'framer-motion';
 import { CheckCircle, XCircle, MapPin, Send, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
-import { CorrectionRequestModal } from '@/components/attendance/CorrectionRequestModal';
+import { useEffect, useRef } from 'react';
 
 export function StudentDashboard() {
   const { profile } = useAuth();
   const { data: summary, isLoading: summaryLoading } = useStudentSummary(profile?.id);
   const { data: corrections, isLoading: correctionsLoading } = useMyCorrectionRequests(profile?.id);
+  const autoExpire = useAutoExpire();
+  const expiredRef = useRef(false);
   const navigate = useNavigate();
-  const [showCorrection, setShowCorrection] = useState(false);
+  const calendarRef = useRef<HTMLDivElement>(null);
+
+  const scrollToCalendar = () => {
+    calendarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  useEffect(() => {
+    if (expiredRef.current) return;
+    expiredRef.current = true;
+    autoExpire.mutate();
+  }, []);
 
   const pct = summary?.percentage ?? 0;
   const pendingCorrections = corrections?.filter((c) => c.status === 'pending')?.length ?? 0;
@@ -37,7 +50,7 @@ export function StudentDashboard() {
           <p className="page-subtitle">Track your attendance</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowCorrection(true)}>
+          <Button variant="outline" size="sm" onClick={scrollToCalendar}>
             <Send className="w-4 h-4" /> Request Correction
           </Button>
           <Button size="sm" onClick={() => navigate('/attendance')}>
@@ -101,12 +114,12 @@ export function StudentDashboard() {
             icon={<Send className="w-5 h-5" />}
             color="amber"
             delay={3}
-            onClick={() => setShowCorrection(true)}
+            onClick={scrollToCalendar}
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div><TodayStatus /></div>
         <div className="lg:col-span-2">
           <CorrectionWidget
@@ -118,9 +131,14 @@ export function StudentDashboard() {
         </div>
       </div>
 
-      {showCorrection && (
-        <CorrectionRequestModal isOpen={showCorrection} onClose={() => setShowCorrection(false)} />
-      )}
+      <motion.div
+        ref={calendarRef}
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.3 }}
+      >
+        <StudentCalendarView />
+      </motion.div>
     </div>
   );
 }

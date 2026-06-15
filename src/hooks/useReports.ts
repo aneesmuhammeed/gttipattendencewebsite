@@ -8,7 +8,7 @@ export function useDashboardStats() {
     queryFn: async () => {
       const today = new Date().toISOString().split('T')[0];
 
-      const [{ count: totalStudents }, { count: presentToday }, { count: activeSessions }, { count: defaulters }] =
+      const [{ count: totalStudents }, { count: presentToday }, { count: scheduledToday }, { count: defaulters }] =
         await Promise.all([
           supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'student'),
           supabase
@@ -16,10 +16,9 @@ export function useDashboardStats() {
             .select('*', { count: 'exact', head: true })
             .eq('attendance_date', today),
           supabase
-            .from('attendance_sessions')
+            .from('attendance_schedule')
             .select('*', { count: 'exact', head: true })
-            .eq('is_active', true)
-            .eq('attendance_date', today),
+            .eq('date', today),
           supabase
             .from('attendance_summary')
             .select('*', { count: 'exact', head: true })
@@ -37,7 +36,7 @@ export function useDashboardStats() {
         present_today: presentToday ?? 0,
         absent_today: absentToday,
         attendance_percentage: attendancePercentage,
-        active_sessions: activeSessions ?? 0,
+        scheduled_today: scheduledToday ?? 0,
         defaulters_count: defaulters ?? 0,
       } as DashboardStats;
     },
@@ -52,13 +51,11 @@ export function useReportData(filters: ReportFilters) {
       const { start_date, end_date, student_id } = filters;
       const defaultDate = end_date || new Date().toISOString().split('T')[0];
 
-      // 1. Get all records for the date range
       let recordsQuery = supabase
         .from('attendance_records')
         .select(`
           *,
-          profiles!attendance_records_student_id_fkey(full_name, roll_number),
-          attendance_sessions(session_code)
+          profiles!attendance_records_student_id_fkey(full_name, roll_number)
         `);
 
       if (start_date) recordsQuery = recordsQuery.gte('attendance_date', start_date);
@@ -73,7 +70,6 @@ export function useReportData(filters: ReportFilters) {
 
       if (student_id) return records;
 
-      // 2. Get all students to fill in missing absent students
       const { data: students } = await supabase
         .from('profiles')
         .select('id, full_name, roll_number')
@@ -81,13 +77,11 @@ export function useReportData(filters: ReportFilters) {
 
       if (!students) return records;
 
-      // 3. Find students with no records in this date range
       const studentsWithRecords = new Set(records.map((r: any) => r.student_id));
       const absentStudents = students
         .filter((s) => !studentsWithRecords.has(s.id))
         .map((s) => ({
           id: `absent-${s.id}`,
-          session_id: null,
           student_id: s.id,
           profiles: { full_name: s.full_name, roll_number: s.roll_number },
           status: 'absent',
@@ -97,10 +91,8 @@ export function useReportData(filters: ReportFilters) {
           longitude: 0,
           ip_address: null,
           user_agent: null,
-          attendance_sessions: null,
         }));
 
-      // 4. Combine records with absent students sorted by date desc
       return [...records, ...absentStudents].sort((a: any, b: any) => {
         const dateA = a.attendance_date || '';
         const dateB = b.attendance_date || '';
@@ -132,24 +124,46 @@ export function useStudentSummary(studentId?: string) {
     queryFn: async () => {
       const today = new Date().toISOString().split('T')[0];
 
-      const [{ count: totalClasses }, { count: presentCount }] = await Promise.all([
+      const [{ count: totalClasses }, { count: presentCount }, { data: holidays }, { data: scheduleDates }] = await Promise.all([
         supabase
-          .from('attendance_sessions')
+          .from('attendance_schedule')
           .select('*', { count: 'exact', head: true })
-          .lte('attendance_date', today),
+          .lte('date', today),
         supabase
           .from('attendance_records')
           .select('*', { count: 'exact', head: true })
           .eq('student_id', studentId!)
           .eq('status', 'present'),
+        supabase.from('holidays').select('date'),
+        supabase.from('attendance_schedule').select('date').lte('date', today),
       ]);
 
-      const total = totalClasses ?? 0;
+      const scheduleDateSet = new Set((scheduleDates ?? []).map((s: any) => s.date));
+      const holidayOverlap = (holidays ?? []).filter((h: any) => scheduleDateSet.has(h.date)).length;
+      const total = (totalClasses ?? 0) - holidayOverlap;
       const present = presentCount ?? 0;
       const absent = total - present;
       const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
 
       return { total_classes: total, present, absent, percentage } as StudentAttendanceSummary;
+    },
+    enabled: !!studentId,
+  });
+}
+
+export function useMyAbsentRecords(studentId?: string) {
+  return useQuery({
+    queryKey: ['my-absent-records', studentId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .select('attendance_date')
+        .eq('student_id', studentId!)
+        .eq('status', 'absent')
+        .order('attendance_date', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data as { attendance_date: string }[];
     },
     enabled: !!studentId,
   });

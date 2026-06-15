@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMyAttendance } from '@/hooks/useAttendance';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CheckCircle, XCircle } from 'lucide-react';
+import { useMyCorrectionRequests } from '@/hooks/useCorrectionRequests';
+import { Card, CardContent } from '@/components/ui/Card';
+import { ChevronLeft, ChevronRight, CheckCircle, XCircle } from 'lucide-react';
 import { CorrectionRequestModal } from './CorrectionRequestModal';
 
 export function StudentCalendarView() {
   const { profile } = useAuth();
   const { data: records } = useMyAttendance(profile?.id);
+  const { data: corrections } = useMyCorrectionRequests(profile?.id);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showCorrection, setShowCorrection] = useState(false);
@@ -19,27 +19,56 @@ export function StudentCalendarView() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
 
-  const absentMap = new Set<string>();
+  const absentMap = new Map<string, 'absent' | 'correction-pending' | 'correction-approved' | 'correction-rejected'>();
   const presentMap = new Set<string>();
   records?.forEach((r) => {
     if (r.status === 'present') presentMap.add(r.attendance_date);
-    else absentMap.add(r.attendance_date);
+    else absentMap.set(r.attendance_date, 'absent');
+  });
+  const correctionStatusMap = new Map<string, string>();
+  corrections?.forEach((c) => {
+    if (c.date) {
+      correctionStatusMap.set(c.date, c.status);
+      if (absentMap.has(c.date)) {
+        absentMap.set(c.date, c.status === 'pending' ? 'correction-pending' : c.status === 'approved' ? 'correction-approved' : 'correction-rejected');
+      }
+    }
   });
 
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
 
-  const getDayColor = (day: number) => {
+  const getDayStyle = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const status = absentMap.get(dateStr);
     if (presentMap.has(dateStr)) return 'bg-success/10 text-success';
-    if (absentMap.has(dateStr)) return 'bg-danger/10 text-danger';
+    if (status === 'correction-pending') return 'bg-warning/10 text-warning';
+    if (status === 'correction-approved') return 'bg-success/10 text-success';
+    if (status === 'correction-rejected') return 'bg-danger/20 text-danger';
+    if (status === 'absent') return 'bg-danger/10 text-danger';
     if (day === new Date().getDate() && month === new Date().getMonth() && year === new Date().getFullYear()) return 'bg-primary-50 text-primary';
     return 'hover:bg-gray-50 text-[#111827]';
   };
 
+  const getDayTitle = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    if (presentMap.has(dateStr)) return 'Present';
+    const status = absentMap.get(dateStr);
+    if (status === 'correction-pending') return 'Correction Pending';
+    if (status === 'correction-approved') return 'Corrected - Approved';
+    if (status === 'correction-rejected') return 'Correction Rejected';
+    if (status === 'absent') return 'Absent - Tap to request correction';
+    return 'No record';
+  };
+
+  const canRequestCorrection = (dateStr: string) => {
+    const status = absentMap.get(dateStr);
+    return status === 'absent' || status === 'correction-rejected';
+  };
+
   return (
     <>
-      <Card hover={false}>
+      <Card>
         <CardContent className="p-3">
           <div className="flex items-center justify-between mb-3">
             <button onClick={prevMonth} className="p-1 rounded-btn hover:bg-gray-100 text-[#6B7280]">
@@ -71,10 +100,10 @@ export function StudentCalendarView() {
                   key={day}
                   onClick={() => {
                     setSelectedDate(dateStr);
-                    if (absentMap.has(dateStr)) setShowCorrection(true);
+                    if (canRequestCorrection(dateStr)) setShowCorrection(true);
                   }}
-                  className={`aspect-square rounded-btn text-xs font-medium transition-colors ${getDayColor(day)}`}
-                  title={presentMap.has(dateStr) ? 'Present' : absentMap.has(dateStr) ? 'Absent' : 'No record'}
+                  className={`aspect-square rounded-btn text-xs font-medium transition-colors ${getDayStyle(day)}`}
+                  title={getDayTitle(day)}
                 >
                   {day}
                 </button>
@@ -82,9 +111,11 @@ export function StudentCalendarView() {
             })}
           </div>
 
-          <div className="flex items-center justify-center gap-4 mt-3 text-xs text-[#6B7280]">
-            <span className="flex items-center gap-1"><CheckCircle className="w-3 h-3 text-success" /> Present</span>
-            <span className="flex items-center gap-1"><XCircle className="w-3 h-3 text-danger" /> Absent</span>
+          <div className="flex items-center justify-center gap-3 mt-3 text-[10px] text-[#6B7280]">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-success/60" /> Present</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-danger/60" /> Absent</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-warning/60" /> Pending</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-danger/40" /> Rejected</span>
           </div>
         </CardContent>
       </Card>
