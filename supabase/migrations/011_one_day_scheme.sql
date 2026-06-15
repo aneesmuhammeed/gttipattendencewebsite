@@ -64,10 +64,16 @@ DECLARE
   radius_meters DOUBLE PRECISION;
   distance DOUBLE PRECISION;
   holiday_count INT;
+  schedule_count INT;
 BEGIN
   SELECT COUNT(*) INTO holiday_count FROM holidays WHERE date = today;
   IF holiday_count > 0 THEN
     RETURN 'HOLIDAY';
+  END IF;
+
+  SELECT COUNT(*) INTO schedule_count FROM attendance_schedule WHERE date = today;
+  IF schedule_count = 0 THEN
+    RETURN 'NO_SCHEDULE';
   END IF;
 
   IF EXISTS (SELECT 1 FROM attendance_records WHERE student_id = p_student_id AND attendance_date = today) THEN

@@ -135,6 +135,7 @@ export function useMarkAttendance() {
 
       const messages: Record<string, string> = {
         HOLIDAY: 'Today is a holiday — no attendance required',
+        NO_SCHEDULE: 'No class scheduled today',
         ALREADY_MARKED: 'You have already marked attendance today',
         OUTSIDE_GEOFENCE: 'You are outside the campus geofence',
         SUCCESS: 'Attendance marked successfully!',

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useAutoExpire } from '@/hooks/useSchedule';
+import { useAutoExpire, useSchedule } from '@/hooks/useSchedule';
 import { useTodayAttendance, useMarkAttendance } from '@/hooks/useAttendance';
 import { checkGeofence } from '@/hooks/useAttendance';
 import { useHolidays } from '@/hooks/useHolidays';
@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { motion } from 'framer-motion';
 import type { GeofenceResult } from '@/types';
 import {
-  CheckCircle, XCircle, AlertTriangle, Clock, Loader2, Target, Fingerprint,
+  CheckCircle, XCircle, AlertTriangle, Clock, Loader2, Target, Fingerprint, Calendar,
 } from 'lucide-react';
 
 export default function Attendance() {
@@ -21,6 +21,7 @@ export default function Attendance() {
 
   const { data: todayRecord, isLoading: todayLoading } = useTodayAttendance(profile?.id);
   const { data: holidays } = useHolidays();
+  const { data: schedule, isLoading: scheduleLoading } = useSchedule();
   const markAttendance = useMarkAttendance();
 
   const [geofence, setGeofence] = useState<GeofenceResult | null>(null);
@@ -32,6 +33,7 @@ export default function Attendance() {
 
   const today = new Date().toISOString().split('T')[0];
   const isHoliday = holidays?.some((h) => h.date === today) ?? false;
+  const hasSchedule = schedule?.some((s) => s.date === today) ?? false;
 
   useEffect(() => {
     if (expiredRef.current) return;
@@ -88,6 +90,17 @@ export default function Attendance() {
               <Clock className="w-12 h-12 text-amber-500 mx-auto mb-3" />
               <p className="text-lg font-semibold text-[#111827]">No Class Today</p>
               <p className="text-sm text-[#6B7280] mt-1">Today is marked as a holiday</p>
+            </CardContent>
+          </Card>
+        ) : !hasSchedule ? (
+          <Card>
+            <CardContent className="text-center py-8">
+              <Calendar className="w-12 h-12 text-[#9CA3AF] mx-auto mb-3" />
+              <p className="text-lg font-semibold text-[#111827]">No Class Scheduled</p>
+              <p className="text-sm text-[#6B7280] mt-1">There is no class scheduled for today</p>
+              <Button variant="outline" size="sm" className="mt-4" onClick={() => navigate('/dashboard')}>
+                Go to Dashboard
+              </Button>
             </CardContent>
           </Card>
         ) : alreadyMarked ? (
