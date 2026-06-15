@@ -62,6 +62,17 @@ export function useCreateCorrectionRequest() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Verify student has an absent record for this date
+      const { data: record } = await supabase
+        .from('attendance_records')
+        .select('status')
+        .eq('student_id', user.id)
+        .eq('attendance_date', date)
+        .maybeSingle();
+
+      if (!record) throw new Error('You can only request a correction for a date where you were marked absent');
+      if (record.status === 'present') throw new Error('You are already marked present for this date');
+
       // Find a session for this date (optional)
       const { data: sessions } = await supabase
         .from('attendance_sessions')

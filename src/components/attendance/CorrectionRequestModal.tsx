@@ -3,7 +3,6 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useCreateCorrectionRequest } from '@/hooks/useCorrectionRequests';
-import toast from 'react-hot-toast';
 
 interface Props {
   isOpen: boolean;
@@ -18,10 +17,7 @@ export function CorrectionRequestModal({ isOpen, onClose, preselectedDate }: Pro
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customDate || !reason.trim()) {
-      toast.error('Please provide a date and reason');
-      return;
-    }
+    if (!customDate || !reason.trim()) return;
     await createRequest.mutateAsync({ date: customDate, reason });
     setReason('');
     onClose();

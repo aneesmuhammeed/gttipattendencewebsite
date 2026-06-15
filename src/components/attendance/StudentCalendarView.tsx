@@ -19,9 +19,11 @@ export function StudentCalendarView() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
 
-  const recordMap = new Map<string, boolean>();
+  const absentMap = new Set<string>();
+  const presentMap = new Set<string>();
   records?.forEach((r) => {
-    if (r.status === 'present') recordMap.set(r.attendance_date, true);
+    if (r.status === 'present') presentMap.add(r.attendance_date);
+    else absentMap.add(r.attendance_date);
   });
 
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
@@ -29,7 +31,8 @@ export function StudentCalendarView() {
 
   const getDayColor = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    if (recordMap.has(dateStr)) return recordMap.get(dateStr) ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger';
+    if (presentMap.has(dateStr)) return 'bg-success/10 text-success';
+    if (absentMap.has(dateStr)) return 'bg-danger/10 text-danger';
     if (day === new Date().getDate() && month === new Date().getMonth() && year === new Date().getFullYear()) return 'bg-primary-50 text-primary';
     return 'hover:bg-gray-50 text-[#111827]';
   };
@@ -63,16 +66,15 @@ export function StudentCalendarView() {
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
               const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const isPresent = recordMap.has(dateStr) && recordMap.get(dateStr);
               return (
                 <button
                   key={day}
                   onClick={() => {
                     setSelectedDate(dateStr);
-                    if (!isPresent) setShowCorrection(true);
+                    if (absentMap.has(dateStr)) setShowCorrection(true);
                   }}
                   className={`aspect-square rounded-btn text-xs font-medium transition-colors ${getDayColor(day)}`}
-                  title={isPresent ? 'Present' : 'No record'}
+                  title={presentMap.has(dateStr) ? 'Present' : absentMap.has(dateStr) ? 'Absent' : 'No record'}
                 >
                   {day}
                 </button>

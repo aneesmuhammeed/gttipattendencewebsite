@@ -65,12 +65,12 @@ export function AdminDashboard() {
       </motion.div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
-        <KpiCard title="Total Students" value={statsLoading ? '...' : stats?.total_students ?? 0} icon={<Users className="w-5 h-5" />} color="blue" delay={0} />
-        <KpiCard title="Present Today" value={statsLoading ? '...' : stats?.present_today ?? 0} icon={<UserCheck className="w-5 h-5" />} color="green" subtitle={`${stats?.attendance_percentage ?? 0}% rate`} trend={{ value: 5, isUp: true }} delay={1} />
-        <KpiCard title="Absent Today" value={statsLoading ? '...' : stats?.absent_today ?? 0} icon={<UserX className="w-5 h-5" />} color="red" delay={2} />
-        <KpiCard title="Attendance %" value={statsLoading ? '...' : `${stats?.attendance_percentage ?? 0}%`} icon={<Activity className="w-5 h-5" />} color="purple" delay={3} />
-        <KpiCard title="Active Sessions" value={statsLoading ? '...' : stats?.active_sessions ?? 0} icon={<CalendarCheck className="w-5 h-5" />} color="amber" delay={4} />
-        <KpiCard title="Defaulters <75%" value={statsLoading ? '...' : stats?.defaulters_count ?? 0} icon={<AlertTriangle className="w-5 h-5" />} color="red" delay={5} />
+        <KpiCard title="Total Students" value={statsLoading ? '...' : stats?.total_students ?? 0} icon={<Users className="w-5 h-5" />} color="blue" delay={0} onClick={() => navigate('/users')} />
+        <KpiCard title="Present Today" value={statsLoading ? '...' : stats?.present_today ?? 0} icon={<UserCheck className="w-5 h-5" />} color="green" subtitle={`${stats?.attendance_percentage ?? 0}% rate`} trend={{ value: 5, isUp: true }} delay={1} onClick={() => navigate('/reports')} />
+        <KpiCard title="Absent Today" value={statsLoading ? '...' : stats?.absent_today ?? 0} icon={<UserX className="w-5 h-5" />} color="red" delay={2} onClick={() => navigate('/reports')} />
+        <KpiCard title="Attendance %" value={statsLoading ? '...' : `${stats?.attendance_percentage ?? 0}%`} icon={<Activity className="w-5 h-5" />} color="purple" delay={3} onClick={() => navigate('/reports')} />
+        <KpiCard title="Active Sessions" value={statsLoading ? '...' : stats?.active_sessions ?? 0} icon={<CalendarCheck className="w-5 h-5" />} color="amber" delay={4} onClick={() => navigate('/sessions')} />
+        <KpiCard title="Defaulters <75%" value={statsLoading ? '...' : stats?.defaulters_count ?? 0} icon={<AlertTriangle className="w-5 h-5" />} color="red" delay={5} onClick={() => navigate('/reports')} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">

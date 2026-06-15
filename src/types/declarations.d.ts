@@ -11,7 +11,6 @@ declare module 'lucide-react' {
   export const BadgeX: FC<SVGProps<SVGSVGElement>>;
   export const BarChart3: FC<SVGProps<SVGSVGElement>>;
   export const BookOpen: FC<SVGProps<SVGSVGElement>>;
-  export const Bell: FC<SVGProps<SVGSVGElement>>;
   export const Calendar: FC<SVGProps<SVGSVGElement>>;
   export const CalendarCheck: FC<SVGProps<SVGSVGElement>>;
   export const CalendarDays: FC<SVGProps<SVGSVGElement>>;

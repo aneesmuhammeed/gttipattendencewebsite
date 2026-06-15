@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDashboardStats } from '@/hooks/useReports';
 import { useSessions } from '@/hooks/useSessions';
@@ -20,6 +21,7 @@ import {
 import { useAttendanceRecords } from '@/hooks/useAttendance';
 
 export function ProfessorDashboard() {
+  const navigate = useNavigate();
   const { profile } = useAuth();
   const { data: stats } = useDashboardStats();
   const { data: sessions, isLoading: sessionsLoading } = useSessions();
@@ -55,10 +57,10 @@ export function ProfessorDashboard() {
       </motion.div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <KpiCard title="Present Today" value={stats?.present_today ?? 0} icon={<UserCheck className="w-5 h-5" />} color="green" delay={0} />
-        <KpiCard title="Absent Today" value={stats?.absent_today ?? 0} icon={<UserX className="w-5 h-5" />} color="red" delay={1} />
-        <KpiCard title="Active Sessions" value={activeSessions.length} icon={<CalendarCheck className="w-5 h-5" />} color="blue" delay={2} />
-        <KpiCard title="Pending Corrections" value={pendingCorrections.length} icon={<AlertTriangle className="w-5 h-5" />} color="amber" delay={3} />
+        <KpiCard title="Present Today" value={stats?.present_today ?? 0} icon={<UserCheck className="w-5 h-5" />} color="green" delay={0} onClick={() => navigate('/reports')} />
+        <KpiCard title="Absent Today" value={stats?.absent_today ?? 0} icon={<UserX className="w-5 h-5" />} color="red" delay={1} onClick={() => navigate('/reports')} />
+        <KpiCard title="Active Sessions" value={activeSessions.length} icon={<CalendarCheck className="w-5 h-5" />} color="blue" delay={2} onClick={() => navigate('/sessions')} />
+        <KpiCard title="Pending Corrections" value={pendingCorrections.length} icon={<AlertTriangle className="w-5 h-5" />} color="amber" delay={3} onClick={() => navigate('/reports')} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">

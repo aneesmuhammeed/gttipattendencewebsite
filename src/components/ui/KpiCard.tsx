@@ -15,6 +15,7 @@ interface KpiCardProps {
   className?: string;
   color?: 'blue' | 'green' | 'amber' | 'red' | 'purple';
   delay?: number;
+  onClick?: () => void;
 }
 
 const colorMap = {
@@ -25,13 +26,14 @@ const colorMap = {
   purple: 'bg-purple-50 text-purple-600',
 };
 
-export function KpiCard({ title, value, icon, trend, subtitle, className, color = 'blue', delay = 0 }: KpiCardProps) {
+export function KpiCard({ title, value, icon, trend, subtitle, className, color = 'blue', delay = 0, onClick }: KpiCardProps) {
   return (
     <motion.div
-      className={cn('bg-white rounded-card p-5 shadow-card', className)}
+      className={cn('bg-white rounded-card p-5 shadow-card', onClick && 'cursor-pointer hover:shadow-card-hover transition-shadow', className)}
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: delay * 0.08 }}
+      onClick={onClick}
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1">

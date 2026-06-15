@@ -3,7 +3,6 @@ import { LayoutDashboard, CalendarCheck, ClipboardList, BarChart3, Users, Settin
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { NotificationBell } from '@/components/ui/NotificationBell';
 
 const roleNavItems = {
   admin: [
@@ -135,7 +134,6 @@ export function Sidebar() {
           <GraduationCap className="w-5 h-5 text-primary" />
           <span className="text-sm font-bold text-[#111827]">Attendify</span>
         </div>
-        <NotificationBell />
       </div>
     </>
   );

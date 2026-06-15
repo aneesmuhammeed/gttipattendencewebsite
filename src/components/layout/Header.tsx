@@ -1,5 +1,4 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { NotificationBell } from '@/components/ui/NotificationBell';
 import { GraduationCap } from 'lucide-react';
 
 export function Header() {
@@ -12,9 +11,6 @@ export function Header() {
         <span className="text-sm text-[#6B7280]">
           Welcome back, <span className="font-semibold text-[#111827]">{profile?.full_name || 'User'}</span>
         </span>
-      </div>
-      <div className="flex items-center gap-2">
-        <NotificationBell />
       </div>
     </header>
   );

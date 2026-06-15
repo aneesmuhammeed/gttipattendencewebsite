@@ -1,25 +1,14 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useStudentSummary } from '@/hooks/useReports';
-import { useAttendanceTrend } from '@/hooks/useAnalytics';
-import { useAttendanceHeatmap } from '@/hooks/useAnalytics';
 import { useMyCorrectionRequests } from '@/hooks/useCorrectionRequests';
-import { useMyAttendance } from '@/hooks/useAttendance';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { Button } from '@/components/ui/Button';
 import { ProgressRing } from '@/components/ui/ProgressRing';
-import { ContributionHeatmap } from '@/components/analytics/ContributionHeatmap';
-import { TrendChart } from '@/components/analytics/TrendChart';
-import { HealthGauge } from '@/components/analytics/HealthGauge';
-import { StreakCard } from '@/components/analytics/StreakCard';
 import { TodayStatus } from '@/components/analytics/TodayStatus';
-import { SummaryCard } from '@/components/analytics/SummaryCard';
 import { CorrectionWidget } from '@/components/analytics/CorrectionWidget';
-import { RecentActivityFeed } from '@/components/analytics/ActivityFeed';
 import { motion } from 'framer-motion';
-import {
-  BookOpen, CheckCircle, XCircle, MapPin, Send, TrendingUp, BarChart3,
-} from 'lucide-react';
+import { CheckCircle, XCircle, MapPin, Send, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { CorrectionRequestModal } from '@/components/attendance/CorrectionRequestModal';
@@ -27,10 +16,7 @@ import { CorrectionRequestModal } from '@/components/attendance/CorrectionReques
 export function StudentDashboard() {
   const { profile } = useAuth();
   const { data: summary, isLoading: summaryLoading } = useStudentSummary(profile?.id);
-  const { data: trend, isLoading: trendLoading } = useAttendanceTrend(profile?.id, 90);
-  const { data: heatmap, isLoading: heatmapLoading } = useAttendanceHeatmap(profile?.id);
   const { data: corrections, isLoading: correctionsLoading } = useMyCorrectionRequests(profile?.id);
-  const { data: myRecords } = useMyAttendance(profile?.id);
   const navigate = useNavigate();
   const [showCorrection, setShowCorrection] = useState(false);
 
@@ -38,13 +24,6 @@ export function StudentDashboard() {
   const pendingCorrections = corrections?.filter((c) => c.status === 'pending')?.length ?? 0;
   const approvedCorrections = corrections?.filter((c) => c.status === 'approved')?.length ?? 0;
   const rejectedCorrections = corrections?.filter((c) => c.status === 'rejected')?.length ?? 0;
-
-  const activities = (myRecords || []).slice(0, 10).map((r) => ({
-    id: r.id,
-    type: 'marked' as const,
-    message: `Attendance marked — ${r.status}`,
-    timestamp: new Date(r.marked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-  }));
 
   return (
     <div className="page-container">
@@ -54,8 +33,8 @@ export function StudentDashboard() {
         animate={{ opacity: 1, y: 0 }}
       >
         <div>
-          <h1 className="page-title">My Analytics</h1>
-          <p className="page-subtitle">Track your attendance performance</p>
+          <h1 className="page-title">My Dashboard</h1>
+          <p className="page-subtitle">Track your attendance</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setShowCorrection(true)}>
@@ -106,6 +85,7 @@ export function StudentDashboard() {
             color="green"
             subtitle={`of ${summary?.total_classes ?? 0} classes`}
             delay={1}
+            onClick={() => navigate('/attendance')}
           />
           <KpiCard
             title="Absent Days"
@@ -113,6 +93,7 @@ export function StudentDashboard() {
             icon={<XCircle className="w-5 h-5" />}
             color="red"
             delay={2}
+            onClick={() => navigate('/attendance')}
           />
           <KpiCard
             title="Pending Corrections"
@@ -120,36 +101,21 @@ export function StudentDashboard() {
             icon={<Send className="w-5 h-5" />}
             color="amber"
             delay={3}
+            onClick={() => setShowCorrection(true)}
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div><TodayStatus /></div>
         <div className="lg:col-span-2">
-          <TrendChart data={trend} isLoading={trendLoading} days={90} />
+          <CorrectionWidget
+            pending={pendingCorrections}
+            approved={approvedCorrections}
+            rejected={rejectedCorrections}
+            isLoading={correctionsLoading}
+          />
         </div>
-        <div className="space-y-6">
-          <TodayStatus />
-          <StreakCard data={trend} isLoading={trendLoading} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <ContributionHeatmap data={heatmap?.map(m => ({ date: m.month + '-01', percentage: m.percentage, present: m.present, total: m.total }))} isLoading={heatmapLoading} />
-        <div className="space-y-6">
-          <HealthGauge percentage={pct} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <SummaryCard isLoading={summaryLoading} />
-        <CorrectionWidget
-          pending={pendingCorrections}
-          approved={approvedCorrections}
-          rejected={rejectedCorrections}
-          isLoading={correctionsLoading}
-        />
-        <RecentActivityFeed activities={activities} isLoading={summaryLoading} />
       </div>
 
       {showCorrection && (
