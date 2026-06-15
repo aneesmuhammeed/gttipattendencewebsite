@@ -67,8 +67,17 @@ export function useCreateCorrectionRequest() {
         .eq('attendance_date', date)
         .maybeSingle();
 
-      if (!record) throw new Error('You can only request a correction for a date where you were marked absent');
-      if (record.status === 'present') throw new Error('You are already marked present for this date');
+      if (record?.status === 'present') throw new Error('You are already marked present for this date');
+
+      if (!record) {
+        const { data: schedule } = await supabase
+          .from('attendance_schedule')
+          .select('date')
+          .eq('date', date)
+          .lte('date', new Date().toISOString().split('T')[0])
+          .maybeSingle();
+        if (!schedule) throw new Error('You can only request a correction for a date where you were marked absent');
+      }
 
       const { error } = await supabase
         .from('attendance_correction_requests')
@@ -82,6 +91,9 @@ export function useCreateCorrectionRequest() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-correction-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['correction-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-corrections'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       toast.success('Correction request submitted');
     },
     onError: (err: Error) => toast.error(err.message),
@@ -105,6 +117,10 @@ export function useApproveCorrection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['correction-requests'] });
       queryClient.invalidateQueries({ queryKey: ['pending-corrections'] });
+      queryClient.invalidateQueries({ queryKey: ['my-correction-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['my-attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['student-summary2'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       toast.success('Correction approved');
     },
     onError: (err: Error) => toast.error(err.message),
@@ -128,6 +144,7 @@ export function useRejectCorrection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['correction-requests'] });
       queryClient.invalidateQueries({ queryKey: ['pending-corrections'] });
+      queryClient.invalidateQueries({ queryKey: ['my-correction-requests'] });
       toast.success('Correction rejected');
     },
     onError: (err: Error) => toast.error(err.message),

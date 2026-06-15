@@ -4,7 +4,7 @@ import { CheckCircle, XCircle, Clock, AlertTriangle, Send, UserCheck } from 'luc
 
 interface Activity {
   id: string;
-  type: 'marked' | 'correction-submitted' | 'correction-approved' | 'correction-rejected';
+  type: 'marked' | 'absent' | 'correction-submitted' | 'correction-approved' | 'correction-rejected';
   message: string;
   timestamp: string;
   user?: string;
@@ -15,8 +15,9 @@ interface ActivityFeedProps {
   isLoading?: boolean;
 }
 
-const activityIcons = {
+const activityIcons: Record<string, { icon: any; color: string; bg: string }> = {
   'marked': { icon: UserCheck, color: 'text-success', bg: 'bg-green-50' },
+  'absent': { icon: XCircle, color: 'text-danger', bg: 'bg-red-50' },
   'correction-submitted': { icon: Send, color: 'text-warning', bg: 'bg-amber-50' },
   'correction-approved': { icon: CheckCircle, color: 'text-success', bg: 'bg-green-50' },
   'correction-rejected': { icon: XCircle, color: 'text-danger', bg: 'bg-red-50' },

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMyAttendance } from '@/hooks/useAttendance';
 import { useMyCorrectionRequests } from '@/hooks/useCorrectionRequests';
+import { useSchedule } from '@/hooks/useSchedule';
 import { Card, CardContent } from '@/components/ui/Card';
 import { ChevronLeft, ChevronRight, CheckCircle, XCircle } from 'lucide-react';
 import { CorrectionRequestModal } from './CorrectionRequestModal';
@@ -10,6 +11,7 @@ export function StudentCalendarView() {
   const { profile } = useAuth();
   const { data: records } = useMyAttendance(profile?.id);
   const { data: corrections } = useMyCorrectionRequests(profile?.id);
+  const { data: schedule } = useSchedule();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showCorrection, setShowCorrection] = useState(false);
@@ -19,19 +21,29 @@ export function StudentCalendarView() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
 
-  const absentMap = new Map<string, 'absent' | 'correction-pending' | 'correction-approved' | 'correction-rejected'>();
-  const presentMap = new Set<string>();
+  const todayStr = new Date().toISOString().split('T')[0];
+  const pastScheduleDates = new Set(
+    (schedule || [])
+      .filter((s) => s.date <= todayStr)
+      .map((s) => s.date)
+  );
+  const recordsPresent = new Set<string>();
+  const recordsAbsent = new Set<string>();
   records?.forEach((r) => {
-    if (r.status === 'present') presentMap.add(r.attendance_date);
-    else absentMap.set(r.attendance_date, 'absent');
+    if (r.status === 'present') recordsPresent.add(r.attendance_date);
+    else recordsAbsent.add(r.attendance_date);
   });
-  const correctionStatusMap = new Map<string, string>();
+  const presentMap = new Set(recordsPresent);
+  const absentMap = new Map<string, 'absent' | 'correction-pending' | 'correction-approved' | 'correction-rejected'>();
+  for (const d of recordsAbsent) absentMap.set(d, 'absent');
+  for (const d of pastScheduleDates) {
+    if (!recordsPresent.has(d) && !absentMap.has(d)) {
+      absentMap.set(d, 'absent');
+    }
+  }
   corrections?.forEach((c) => {
-    if (c.date) {
-      correctionStatusMap.set(c.date, c.status);
-      if (absentMap.has(c.date)) {
-        absentMap.set(c.date, c.status === 'pending' ? 'correction-pending' : c.status === 'approved' ? 'correction-approved' : 'correction-rejected');
-      }
+    if (c.date && absentMap.has(c.date)) {
+      absentMap.set(c.date, c.status === 'pending' ? 'correction-pending' : c.status === 'approved' ? 'correction-approved' : 'correction-rejected');
     }
   });
 

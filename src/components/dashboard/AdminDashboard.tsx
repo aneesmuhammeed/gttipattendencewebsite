@@ -33,19 +33,21 @@ export function AdminDashboard() {
     queryFn: async () => {
       const { data } = await supabase
         .from('attendance_records')
-        .select('id, marked_at, profiles!attendance_records_student_id_fkey(full_name)')
+        .select('id, status, marked_at, attendance_date, profiles!attendance_records_student_id_fkey(full_name)')
         .order('marked_at', { ascending: false })
-        .limit(8);
+        .limit(10);
       return data || [];
     },
-    refetchInterval: 30000,
+    refetchInterval: 15000,
   });
 
   const activities = [
     ...(recentRecords || []).map((r: any) => ({
       id: r.id,
-      type: 'marked' as const,
-      message: `${r.profiles?.full_name || 'Student'} marked attendance`,
+      type: r.status === 'present' ? 'marked' : 'absent',
+      message: r.status === 'present'
+        ? `${r.profiles?.full_name || 'Student'} marked present`
+        : `${r.profiles?.full_name || 'Student'} was marked absent`,
       timestamp: new Date(r.marked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
     })),
     ...(corrections || []).slice(0, 4).map((c: any) => ({

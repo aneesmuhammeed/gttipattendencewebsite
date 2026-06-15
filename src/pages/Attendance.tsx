@@ -33,7 +33,12 @@ export default function Attendance() {
 
   const today = new Date().toISOString().split('T')[0];
   const isHoliday = holidays?.some((h) => h.date === today) ?? false;
-  const hasSchedule = schedule?.some((s) => s.date === today) ?? false;
+  const todaySchedule = schedule?.find((s) => s.date === today);
+  const hasSchedule = !!todaySchedule;
+  const now = new Date();
+  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const isClassExpired = todaySchedule && currentTime > todaySchedule.end_time?.slice(0, 5);
+  const isClassFuture = todaySchedule && currentTime < todaySchedule.start_time?.slice(0, 5);
 
   useEffect(() => {
     if (expiredRef.current) return;
@@ -98,6 +103,32 @@ export default function Attendance() {
               <Calendar className="w-12 h-12 text-[#9CA3AF] mx-auto mb-3" />
               <p className="text-lg font-semibold text-[#111827]">No Class Scheduled</p>
               <p className="text-sm text-[#6B7280] mt-1">There is no class scheduled for today</p>
+              <Button variant="outline" size="sm" className="mt-4" onClick={() => navigate('/dashboard')}>
+                Go to Dashboard
+              </Button>
+            </CardContent>
+          </Card>
+        ) : isClassFuture ? (
+          <Card>
+            <CardContent className="text-center py-8">
+              <Clock className="w-12 h-12 text-primary mx-auto mb-3" />
+              <p className="text-lg font-semibold text-[#111827]">Class Not Started</p>
+              <p className="text-sm text-[#6B7280] mt-1">
+                Today's class starts at {todaySchedule?.start_time?.slice(0, 5)}
+              </p>
+              <Button variant="outline" size="sm" className="mt-4" onClick={() => navigate('/dashboard')}>
+                Go to Dashboard
+              </Button>
+            </CardContent>
+          </Card>
+        ) : isClassExpired ? (
+          <Card>
+            <CardContent className="text-center py-8">
+              <XCircle className="w-12 h-12 text-danger mx-auto mb-3" />
+              <p className="text-lg font-semibold text-[#111827]">Class Ended</p>
+              <p className="text-sm text-[#6B7280] mt-1">
+                Class ended at {todaySchedule?.end_time?.slice(0, 5)} — attendance can no longer be marked
+              </p>
               <Button variant="outline" size="sm" className="mt-4" onClick={() => navigate('/dashboard')}>
                 Go to Dashboard
               </Button>

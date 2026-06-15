@@ -129,6 +129,7 @@ export function useMarkAttendance() {
         p_student_id: user.id,
         p_latitude: latitude,
         p_longitude: longitude,
+        p_user_agent: navigator.userAgent,
       });
 
       if (error) throw error;
@@ -136,6 +137,8 @@ export function useMarkAttendance() {
       const messages: Record<string, string> = {
         HOLIDAY: 'Today is a holiday — no attendance required',
         NO_SCHEDULE: 'No class scheduled today',
+        CLASS_NOT_STARTED: 'Class has not started yet',
+        CLASS_EXPIRED: 'Class time has ended — you can no longer mark attendance',
         ALREADY_MARKED: 'You have already marked attendance today',
         OUTSIDE_GEOFENCE: 'You are outside the campus geofence',
         SUCCESS: 'Attendance marked successfully!',
